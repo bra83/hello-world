@@ -1,4 +1,5 @@
 name: Forbidden Lands 3.3.5 Start Button Hotfix
+# artifact-delivery: 2026-09-20
 # smoke-fixed-tap: 2026-09-20
 
 on:
@@ -193,18 +194,32 @@ jobs:
 
             adb shell pidof com.braseiro.forbiddenlands
             adb exec-out screencap -p > FORBIDDEN_LANDS_3.3.5_AFTER_START.png
+            ! cmp -s FORBIDDEN_LANDS_3.3.5_BEFORE_START.png FORBIDDEN_LANDS_3.3.5_AFTER_START.png
             adb shell uiautomator dump /sdcard/fl_after.xml >/dev/null 2>&1 || true
             adb shell cat /sdcard/fl_after.xml > FORBIDDEN_LANDS_3.3.5_AFTER_UI.xml 2>/dev/null || true
             adb logcat -d -t 1000 > FORBIDDEN_LANDS_3.3.5_LOGCAT.txt
             ! grep -q "FATAL EXCEPTION" FORBIDDEN_LANDS_3.3.5_LOGCAT.txt
 
-      - name: Publish worker release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
-          gh release create "$RELEASE_TAG"             --target "$GITHUB_SHA"             --title "Forbidden Lands 3.3.5 — Start Button Hotfix"             --notes "Start button is now 100% local before any Gemini call. The first playable scene is committed immediately with three predefined choices plus Ação Livre. Gemini begins only after the player's first action. Gemini TTS gets one short attempt, then Android TTS continues."
-
-          gh release upload "$RELEASE_TAG"             "$APK_NAME" "$APK_NAME.sha256"             APK_ZIP_TEST.txt APK_BADGING.txt APK_SIGNATURE.txt             GRADLE_VERSION.txt GRADLE_PROJECTS.txt GRADLE_RESOURCES.txt GRADLE_COMPILE.txt GRADLE_ASSEMBLE.txt             FORBIDDEN_LANDS_3.3.5_BEFORE_START.png FORBIDDEN_LANDS_3.3.5_AFTER_START.png             FORBIDDEN_LANDS_3.3.5_BEFORE_UI.xml FORBIDDEN_LANDS_3.3.5_AFTER_UI.xml             FORBIDDEN_LANDS_3.3.5_LOGCAT.txt SOURCE_ZIP_INTEGRITY.txt
+      - name: Upload validated APK and smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: forbidden-lands-3.3.5-validated
+          compression-level: 0
+          retention-days: 7
+          path: |
+            BRASEIRO_FORBIDDEN_LANDS_3.3.5.apk
+            BRASEIRO_FORBIDDEN_LANDS_3.3.5.apk.sha256
+            APK_ZIP_TEST.txt
+            APK_BADGING.txt
+            APK_SIGNATURE.txt
+            GRADLE_VERSION.txt
+            GRADLE_PROJECTS.txt
+            GRADLE_RESOURCES.txt
+            GRADLE_COMPILE.txt
+            GRADLE_ASSEMBLE.txt
+            FORBIDDEN_LANDS_3.3.5_BEFORE_START.png
+            FORBIDDEN_LANDS_3.3.5_AFTER_START.png
+            FORBIDDEN_LANDS_3.3.5_BEFORE_UI.xml
+            FORBIDDEN_LANDS_3.3.5_AFTER_UI.xml
+            FORBIDDEN_LANDS_3.3.5_LOGCAT.txt
+            SOURCE_ZIP_INTEGRITY.txt
