@@ -1,0 +1,10 @@
+name: runner probe
+on:
+  push:
+    branches: [master]
+    paths: [".github/workflows/runner-probe.yml"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo RUNNER_OK
