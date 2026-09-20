@@ -1,5 +1,6 @@
 name: Forbidden Lands 3.3.2 build worker
 # fixed-public-npm-lock: 2026-09-20
+# absolute-worker-paths: 2026-09-20
 
 on:
   push:
@@ -81,10 +82,12 @@ jobs:
           WEB_ROOT="$(dirname "$ANDROID_ROOT")"
           test -f "$WEB_ROOT/package.json"
 
-          echo "android_root=$ANDROID_ROOT" >> "$GITHUB_OUTPUT"
-          echo "web_root=$WEB_ROOT" >> "$GITHUB_OUTPUT"
-          echo "ANDROID_ROOT=$ANDROID_ROOT"
-          echo "WEB_ROOT=$WEB_ROOT"
+          ANDROID_ROOT_ABS="$GITHUB_WORKSPACE/$ANDROID_ROOT"
+          WEB_ROOT_ABS="$GITHUB_WORKSPACE/$WEB_ROOT"
+          echo "android_root=$ANDROID_ROOT_ABS" >> "$GITHUB_OUTPUT"
+          echo "web_root=$WEB_ROOT_ABS" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_ROOT=$ANDROID_ROOT_ABS"
+          echo "WEB_ROOT=$WEB_ROOT_ABS"
 
       - uses: actions/setup-node@v4
         with:
