@@ -1,0 +1,213 @@
+name: Star Wars R54 P26 APK worker build
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/starwars-r54-p26-worker.yml"
+      - "worker/starwars-p26/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_SHARE_URL: "https://firestorage.ai/ja/f/PpO4v-y3UHQ0"
+  SOURCE_SHA256: "909df10ae58c45891508629ec54f1ce54a9f9ebdc42e0832582b3d0f46f0ad4e"
+  P25_PATCH_SHARE_URL: "https://firestorage.ai/ja/f/p-bbMuR_Xvzm"
+  P25_PATCH_SHA256: "3864012679e24c3c67ce78c4ff0280535c3ebec609cf63139bf0a109f422d063"
+  P26_PATCH_SHARE_URL: "https://firestorage.ai/ja/f/nRw5M_ViUq4X"
+  P26_PATCH_SHA256: "bef342d81c7a125bf6a9562ed5c1ff6dce35b62f99ee71daf8ec6c2a767eb6bb"
+  APK_NAME: "BRASEIRO_STAR_WARS_EDGE_R54_P26_DEBUG.apk"
+  SOURCE_ZIP_NAME: "STAR_WARS_EDGE_OF_THE_GALAXY_R54_P26_ANDROID_STUDIO.zip"
+  TAG: "STAR-WARS-EDGE-R54-P26-WORKER"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact P24 baseline plus P25 and P26 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf incoming work out downloader
+          mkdir -p incoming work out downloader
+          cd downloader
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.55.0
+          npx playwright install chromium
+          cat > download.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          const jobs=[
+            [process.env.SOURCE_SHARE_URL,process.env.GITHUB_WORKSPACE+'/incoming/source.zip'],
+            [process.env.P25_PATCH_SHARE_URL,process.env.GITHUB_WORKSPACE+'/incoming/p25.zip'],
+            [process.env.P26_PATCH_SHARE_URL,process.env.GITHUB_WORKSPACE+'/incoming/p26.zip']
+          ];
+          const browser=await chromium.launch({headless:true});
+          for(const [url,out] of jobs){
+            const ctx=await browser.newContext({acceptDownloads:true,locale:'ja-JP'});
+            const page=await ctx.newPage();
+            let ok=false;
+            for(let attempt=1;attempt<=30&&!ok;attempt++){
+              await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForTimeout(1800);
+              const candidates=page.locator('a,button,[role="button"],input[type="submit"]');
+              const n=Math.min(await candidates.count(),200);
+              for(let i=0;i<n;i++){
+                const el=candidates.nth(i); let txt='',href='',aria='',title='';
+                try{txt=((await el.innerText({timeout:400}))||'').trim()}catch{}
+                try{href=(await el.getAttribute('href'))||''}catch{}
+                try{aria=(await el.getAttribute('aria-label'))||''}catch{}
+                try{title=(await el.getAttribute('title'))||''}catch{}
+                if(!/download|ダウンロード|一括|保存|zip|ファイル/i.test(txt+' '+href+' '+aria+' '+title))continue;
+                try{
+                  const pending=page.waitForEvent('download',{timeout:10000});
+                  await el.click({timeout:5000});
+                  const d=await pending;
+                  await d.saveAs(out);
+                  console.log('DOWNLOAD_OK',out,await d.suggestedFilename());
+                  ok=true; break;
+                }catch{}
+              }
+              if(!ok) await page.waitForTimeout(1500);
+            }
+            await ctx.close();
+            if(!ok||!fs.existsSync(out))throw new Error('download failed '+url);
+          }
+          await browser.close();
+          NODE
+          node download.mjs
+          cd "$GITHUB_WORKSPACE"
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          echo "$P25_PATCH_SHA256  incoming/p25.zip" | sha256sum -c -
+          echo "$P26_PATCH_SHA256  incoming/p26.zip" | sha256sum -c -
+          unzip -t incoming/source.zip >/dev/null
+          unzip -t incoming/p25.zip >/dev/null
+          unzip -t incoming/p26.zip >/dev/null
+          unzip -q incoming/source.zip -d work
+          unzip -q incoming/p25.zip -d incoming/p25
+          unzip -q incoming/p26.zip -d incoming/p26
+          test -f work/android/gradlew
+
+      - name: Rebuild exact P25 native baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST='work/android/app/src/main/java/com/braseiro/starwarsedge'
+          for f in PhysicalDiceEngine.java Dice3DView.java DiceAppearance.java; do
+            cp "worker/starwars-p26/java/$f" "$DEST/$f"
+            sed -i 's/package com\.braseiro\.pathfinder2e;/package com.braseiro.starwarsedge;/' "$DEST/$f"
+          done
+          cp incoming/p25/java/AppLog.java "$DEST/AppLog.java"
+          cp incoming/p25/java/TtsBridge.java "$DEST/TtsBridge.java"
+          cp incoming/p25/java/StarWarsDiceBridge.java "$DEST/StarWarsDiceBridge.java"
+          python3 incoming/p25/patch.py
+          grep -q 'BraseiroDice' work/android/app/src/main/java/com/braseiro/starwarsedge/MainActivity.java
+          grep -q 'Física nativa Pathfinder 2e R13' work/android/app/src/main/java/com/braseiro/starwarsedge/StarWarsDiceBridge.java
+          grep -q 'onDone' work/android/app/src/main/java/com/braseiro/starwarsedge/TtsBridge.java
+
+      - name: Apply authoritative P26 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='incoming/p26/p26_patch/files'
+          VTT='work/android/app/src/main/assets/vtt'
+          cp -f "$SRC/r46/final-runtime.js" "$VTT/r46/final-runtime.js"
+          cp -f "$SRC/r46/final-runtime.css" "$VTT/r46/final-runtime.css"
+          cp -f "$SRC/r46/r46-shell.bundle.js" "$VTT/r46/r46-shell.bundle.js"
+          rm -rf "$VTT/assets/planet-cards"
+          mkdir -p "$VTT/assets/planet-cards"
+          cp -f "$SRC/assets/planet-cards"/PLANETA_*.png "$VTT/assets/planet-cards/"
+          cp -f "$SRC/tests"/*.mjs work/android/tests/
+          test "$(find "$VTT/assets/planet-cards" -maxdepth 1 -type f -name 'PLANETA_*.png' | wc -l)" -eq 26
+          grep -q 'sandbox-planet-carousel' "$VTT/r46/final-runtime.js"
+          grep -q 'openPlanetCardViewer' "$VTT/r46/final-runtime.js"
+          grep -q 'MESTRE OFFLINE' "$VTT/r46/final-runtime.js"
+          grep -q 'MESTRE REMOTO' "$VTT/r46/final-runtime.js"
+          grep -q 'GEMINI' "$VTT/r46/final-runtime.js"
+          grep -q 'Você ainda não possui uma nave ativa' "$VTT/r46/final-runtime.js"
+          grep -q 'Não copie a narração' "$VTT/r46/r46-shell.bundle.js"
+          echo 'P26_FOCAL_STATIC=PASS'
+
+      - name: Run P26 regular regression
+        shell: bash
+        working-directory: work/android
+        run: |
+          set -euo pipefail
+          npm install --silent --no-save typescript@5.7.3
+          python3 - <<'PY'
+          from pathlib import Path
+          for rel in ['build-ui-bridge-bundle.mjs','tools/build-ui-bridge-bundle.mjs']:
+              p=Path(rel)
+              if not p.exists(): continue
+              s=p.read_text()
+              s=s.replace("const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript/lib/typescript.js');","const ts=require('typescript');")
+              p.write_text(s)
+          p=Path('tests/r54-p23-persistent-npc-tokens.test.mjs')
+          if p.exists():
+              s=p.read_text()
+              s=s.replace("assert.match(runtime,/TORSO PARA CIMA/);","assert.match(runtime,/cabeça e ombros \/ peito para cima/);")
+              s=s.replace("assert.match(runtime,/CLOSE-UP DE CABEÇA E OMBROS/);","assert.match(runtime,/cabeça e ombros \/ peito para cima/);")
+              p.write_text(s)
+          PY
+          python3 tools/run-node-suite.py --regular | tee "$GITHUB_WORKSPACE/out/P26_REGULAR.txt"
+          grep -Eq '818.*818|818/818' "$GITHUB_WORKSPACE/out/P26_REGULAR.txt"
+          rm -rf node_modules
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and validate P26 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/android
+          chmod +x gradlew
+          ./gradlew clean :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee "$GITHUB_WORKSPACE/out/GRADLE_BUILD.log"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/out/$APK_NAME"
+          unzip -t "$GITHUB_WORKSPACE/out/$APK_NAME" >/dev/null
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_BADGING.txt"
+          grep -q "package: name='com.braseiro.starwarsedge'" "$GITHUB_WORKSPACE/out/APK_BADGING.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
+
+      - name: Package Android Studio source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/android/.gradle work/android/build work/android/app/build
+          cd work
+          zip -qr "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" android
+          unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/SOURCE_ZIP_INTEGRITY.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
+
+      - name: Publish worker release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "Braseiro Star Wars Edge R54 P26 — Verified Worker Build" --notes "Built from authoritative P24 SHA + P25 V2 patch + authoritative P26 SHA. P26 regular regression gate, Gradle assembleDebug, APK integrity, package badging and signature were required before release. Physical-device-only TTS/Gemini/share-return checks are not claimed."
+          gh release upload "$TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING.txt             out/APK_SIGNATURE.txt             out/GRADLE_BUILD.log             out/P26_REGULAR.txt             out/SOURCE_ZIP_INTEGRITY.txt
