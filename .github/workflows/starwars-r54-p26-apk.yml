@@ -206,10 +206,10 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/out"
           python3 tools/run-node-suite.py --regular | tee "$GITHUB_WORKSPACE/out/P26_REGULAR.txt"
-          grep -Eq '818/818|818.*PASS|PASS.*818' "$GITHUB_WORKSPACE/out/P26_REGULAR.txt" || {
-            echo "::error::P26 regular regression did not prove 818/818 PASS"
-            exit 1
-          }
+          grep -q '"tests":818' "$GITHUB_WORKSPACE/out/P26_REGULAR.txt"
+          grep -q '"pass":818' "$GITHUB_WORKSPACE/out/P26_REGULAR.txt"
+          grep -q '"fail":0' "$GITHUB_WORKSPACE/out/P26_REGULAR.txt"
+          echo "P26_REGULAR_GATE=818/818 PASS"
           rm -rf node_modules
 
       - uses: actions/setup-java@v4
