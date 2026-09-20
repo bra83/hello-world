@@ -1,4 +1,4 @@
-name: Cyberpunk RED R5.50 boot + UI hotfix
+name: Cyberpunk RED R5.60 interface rebuild
 
 on:
   push:
@@ -13,14 +13,17 @@ permissions:
 env:
   BASE_URL: "https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r5.49-real-device-fix/CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip"
   BASE_SHA256: "a47e6c46ac3683d85eacda58f083aef308ddcb737ceb28fd39b42f579ee1577a"
+  OVERLAY_URL: "https://firestorage.ai/ja/f/pkT3v-dCFkWP"
+  OVERLAY_SHA256: "6f466bbb77d0ef7c20cc8a217b9a97acebc693b0ebe2d2a49812d1d18336c034"
+  RELEASE_TAG: "cyberpunk-red-r5.60-ui-rebuild"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
   ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
-  RELEASE_TAG: "cyberpunk-red-r5.50-boot-ui-hotfix"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,104 +31,120 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 4 --retry-delay 2 -o base.zip "$BASE_URL"
-          echo "$BASE_SHA256  base.zip" | sha256sum -c -
-          unzip -t base.zip >/dev/null
+          mkdir -p incoming
+          curl -fL --retry 4 --retry-delay 2 -o incoming/base.zip "$BASE_URL"
+          echo "$BASE_SHA256  incoming/base.zip" | sha256sum -c -
+          unzip -t incoming/base.zip >/dev/null
 
-      - name: Apply R5.50 boot and phone UI hotfix
+      - name: Download exact R5.60 UI overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r560
+          cd /tmp/r560
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.55.0
+          npx playwright install chromium
+          cat > one.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          const [url,out]=process.argv.slice(2);
+          const b=await chromium.launch({headless:true});
+          const c=await b.newContext({acceptDownloads:true,locale:'ja-JP'});
+          const p=await c.newPage();
+          async function open(){await p.goto(url,{waitUntil:'domcontentloaded',timeout:60000});await p.waitForTimeout(1600)}
+          await open();
+          for(let round=0;round<14;round++){
+            const es=p.locator('a,button,[role="button"]');
+            for(let i=0;i<Math.min(await es.count(),220);i++){
+              const e=es.nth(i);let meta='';
+              try{meta=(await e.innerText())+' '+(await e.getAttribute('title')||'')+' '+(await e.getAttribute('aria-label')||'')+' '+(await e.getAttribute('href')||'')}catch{}
+              if(!/download|ダウンロード|保存|取得|zip|file|ファイル/i.test(meta))continue;
+              try{
+                const q=p.waitForEvent('download',{timeout:9000});
+                await e.click({timeout:4500});
+                const d=await q;
+                await d.saveAs(out);
+                console.log('OVERLAY_OK',await d.suggestedFilename());
+                await b.close();
+                process.exit(0);
+              }catch{}
+            }
+            await p.waitForTimeout(1400);
+            if(round%4===3)await open();
+          }
+          console.error((await p.locator('body').innerText()).slice(0,5000));
+          await b.close();process.exit(2);
+          NODE
+          node one.mjs "$OVERLAY_URL" "$GITHUB_WORKSPACE/incoming/overlay.zip"
+          cd "$GITHUB_WORKSPACE"
+          test -s incoming/overlay.zip
+          echo "$OVERLAY_SHA256  incoming/overlay.zip" | sha256sum -c -
+          unzip -t incoming/overlay.zip >/dev/null
+
+      - name: Assemble R5.60 source
         id: src
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf work && mkdir work
-          unzip -q base.zip -d work
+          rm -rf work
+          mkdir work
+          unzip -q incoming/base.zip -d work
           PROJECT="$(find work -mindepth 1 -maxdepth 1 -type d | head -1)"
           ROOT="$PROJECT/android"
           test -f "$ROOT/settings.gradle.kts"
+          unzip -oq incoming/overlay.zip -d "$ROOT"
           chmod +x "$ROOT/gradlew"
-          export ROOT
-          python3 - <<'PY'
-          from pathlib import Path
-          import os,re
-          root=Path(os.environ['ROOT'])
-          app=root/'app/src/main/assets/web/app'
-
-          p=app/'sheets.js'
-          s=p.read_text(encoding='utf-8')
-          bad="openingNarration(){return 'GERANDO CENA COM GEMINI…\n\nAguarde a resposta do Mestre. Se a API falhar, o motivo será mostrado aqui em vez de uma abertura genérica.'}"
-          good="openingNarration(){return 'GERANDO CENA COM GEMINI…\\n\\nAguarde a resposta do Mestre. Se a API falhar, o motivo será mostrado aqui em vez de uma abertura genérica.'}"
-          if bad in s:
-              s=s.replace(bad,good)
-          # also normalize any accidentally generated multiline literal variant
-          s=re.sub(
-              r"openingNarration\(\)\{return 'GERANDO CENA COM GEMINI…\s*\n\s*\nAguarde a resposta do Mestre\. Se a API falhar, o motivo será mostrado aqui em vez de uma abertura genérica\.'\}",
-              good,
-              s,
-              flags=re.M
-          )
-          p.write_text(s,encoding='utf-8')
-
-          p=app/'index.html'
-          s=p.read_text(encoding='utf-8')
-          s=re.sub(r"app\.js\?build=\d+","app.js?build=4010",s)
-          s=s.replace(
-              "window.addEventListener('error',event=>window.__cpredBootFail(event.error||event.message));",
-              "window.addEventListener('error',event=>window.__cpredBootFail((event.error||event.message)+' @ '+(event.filename||'inline')+':'+(event.lineno||0)+':'+(event.colno||0)));"
-          )
-          p.write_text(s,encoding='utf-8')
-
-          p=app/'styles.css'
-          s=p.read_text(encoding='utf-8')
-          addon=r'''
-/* R5.50 physical-phone session cleanup */
-.session-campaign-bar{grid-template-columns:1.2fr 1fr .92fr!important;gap:6px!important;padding:7px 8px!important}
-.session-campaign-bar button{min-height:38px!important;height:38px!important;font-size:7.2px!important;padding:5px 6px!important}
-#sessionRestartBtn{font-size:6.6px!important;line-height:1.15!important}
-.session-console{grid-template-columns:minmax(0,1fr) 108px!important;gap:7px!important;padding:8px!important}
-#sessionActionSend{grid-column:2!important;height:54px!important}
-.session-voice-actions{grid-column:1/-1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;padding:0!important}
-.session-voice-actions button{grid-column:auto!important;height:36px!important;min-height:36px!important;font-size:7px!important;padding:5px!important}
-.session-response{font-size:8.5px!important;line-height:1.5!important}
-@media(max-width:430px){.session-campaign-bar{grid-template-columns:1.16fr .92fr .92fr!important}.session-campaign-bar button{min-height:36px!important;height:36px!important}.session-console{grid-template-columns:minmax(0,1fr) 104px!important}}
-'''
-          if 'R5.50 physical-phone session cleanup' not in s:
-              s += addon
-          p.write_text(s,encoding='utf-8')
-
-          p=root/'app/build.gradle.kts'
-          s=p.read_text(encoding='utf-8')
-          s=re.sub(r'versionCode\s*=\s*\d+','versionCode = 4010',s)
-          s=re.sub(r'versionName\s*=\s*"[^"]+"','versionName = "4.0.10"',s)
-          p.write_text(s,encoding='utf-8')
-
-          print('R5_50_PATCH_APPLIED')
-          PY
+          grep -F 'versionCode = 4100' "$ROOT/app/build.gradle.kts"
+          grep -F 'versionName = "4.1.0"' "$ROOT/app/build.gradle.kts"
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Module syntax and semantic gates
+      - name: Interface architecture gates
         shell: bash
         env:
           ROOT: ${{ steps.src.outputs.root }}
         run: |
           set -euo pipefail
           APP="$ROOT/app/src/main/assets/web/app"
+
           for f in app.js sheets.js gameplay.js netrun.js atlas.js audio.js; do
-            echo "MODULE_CHECK $f"
+            echo "ES_MODULE_CHECK $f"
             node --input-type=module --check < "$APP/$f"
           done
+
           python3 - "$ROOT" <<'PY'
-          import json,pathlib,sys,hashlib
-          root=pathlib.Path(sys.argv[1]); app=root/'app/src/main/assets/web/app'; data=app/'data'
-          js=(app/'sheets.js').read_text(encoding='utf-8')
-          assert "openingNarration(){return 'GERANDO CENA COM GEMINI…\\n\\nAguarde" in js
-          assert "GERANDO CENA COM GEMINI…\n\nAguarde" not in js
+          import json,pathlib,sys,hashlib,re,zipfile
+          root=pathlib.Path(sys.argv[1]); app=root/'app/src/main/assets/web/app'
+          html=(app/'index.html').read_text(encoding='utf-8')
+          css=(app/'interface_v2.css').read_text(encoding='utf-8')
+          sheets=(app/'sheets.js').read_text(encoding='utf-8')
+          appjs=(app/'app.js').read_text(encoding='utf-8')
+
+          # Required persistent shell.
+          for text in ['SESSÃO','MUNDO','MAPA','FICHA','MAIS','MUNDO VIVO','NPCs PRESENTES','AÇÃO LIVRE','BIBLIOTECA','STREET STORIES','VEÍCULO']:
+              assert text in html,text
+          for id_ in ['sessionWorldTime','sceneNpcList','sceneIllustration','tableNarrative','sessionRecommended','sessionActionInput','sessionActionSend','sessionListenBtn','sessionAndroidListenBtn','sessionLibraryBtn','npcVisualSheet','moreSheet']:
+              assert f'id="{id_}"' in html,id_
+          assert 'bottom-nav' in html
+          assert 'interface_v2.css' in html
+          assert 'app.js?build=4100' in html
+          assert 'data-tab="stories"' in html and 'id="tab-stories"' in html
+          assert 'data-tab="vehicle"' in html and 'id="tab-vehicle"' in html
+          assert 'sceneNpcKey(n)' in sheets and 'npcVisualRegistry' in sheets and 'importNpcVisual' in sheets
+          assert "listenNarration('android')" in sheets
+          assert "['table','game','stories','vehicle','combat','library']" in appjs
+          assert "background-image:none!important" in css
+          assert "position:fixed!important" in css and "bottom-nav" in css
+
+          # JSON + asset integrity.
+          for p in root.rglob('*.json'): json.loads(p.read_text(encoding='utf-8'))
+          data=app/'data'
           core=json.loads((data/'equipment_catalog.json').read_text(encoding='utf-8'))
           assert len(core['items'])==123
           hashes=set()
           for x in core['items']:
-              q=app/x['asset']; assert q.is_file() and q.stat().st_size>500
-              h=hashlib.sha256(q.read_bytes()).hexdigest(); assert h not in hashes; hashes.add(h)
+              q=app/x['asset']; assert q.is_file() and q.stat().st_size>500,(x.get('id'),x.get('asset'))
+              h=hashlib.sha256(q.read_bytes()).hexdigest();assert h not in hashes,x.get('id');hashes.add(h)
           specs=[
             ('equipment_catalog.json','items',lambda x:x.get('category')=='weapon',16),
             ('black_chrome_catalog.json','items',lambda x:x.get('category')=='weapon',55),
@@ -134,12 +153,11 @@ jobs:
           ]
           total=0
           for fn,key,pred,n in specs:
-              o=json.loads((data/fn).read_text(encoding='utf-8')); rows=[x for x in o[key] if pred(x)]
-              assert len(rows)==n,(fn,len(rows),n); total+=len(rows)
-              for x in rows:
-                  assert (app/x['asset']).is_file(),(fn,x.get('name'))
+              obj=json.loads((data/fn).read_text(encoding='utf-8'));rows=[x for x in obj[key] if pred(x)]
+              assert len(rows)==n,(fn,len(rows),n);total+=len(rows)
+              for x in rows: assert (app/x['asset']).is_file(),(fn,x.get('name'),x.get('asset'))
           assert total==155
-          print('R5_50_SEMANTIC_PASS core=123 weapons=155 unique_core_icons=123')
+          print('R5_60_UI_GATE_PASS core_items=123 weapons=155 unique_core_assets=123')
           PY
 
       - uses: actions/setup-java@v4
@@ -152,12 +170,13 @@ jobs:
         run: |
           set -euo pipefail
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile and assemble R5.50
+      - name: Compile R5.60
         working-directory: ${{ steps.src.outputs.root }}
         shell: bash
         run: |
@@ -166,13 +185,14 @@ jobs:
           ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac --no-daemon --stacktrace
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
           APK="$(find app/build/outputs/apk/debug -name '*.apk' | sort | head -1)"
-          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk"
-          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" >/dev/null
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk"
+          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk" >/dev/null
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R550.txt"
-          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R550.txt"
-          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4010' versionName='4.0.10'" "$GITHUB_WORKSPACE/APK_BADGING_R550.txt"
-          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk.sha256"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R560.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R560.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4100' versionName='4.1.0'" "$GITHUB_WORKSPACE/APK_BADGING_R560.txt"
+          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk.sha256"
 
       - name: Enable KVM
         shell: bash
@@ -181,7 +201,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Android boot guard and layout smoke
+      - name: Android layout and navigation smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -194,63 +214,85 @@ jobs:
             set -eu
             adb shell wm size 1440x3088
             adb shell wm density 560
-            adb install -r BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk
+            adb install -r BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk
             adb shell am force-stop com.braseiro.cyberpunkred
             adb shell am start -W -n com.braseiro.cyberpunkred/.MainActivity
-            sleep 16
+            sleep 18
             adb shell pidof com.braseiro.cyberpunkred
-            adb shell uiautomator dump /sdcard/r550.xml >/dev/null || true
-            adb pull /sdcard/r550.xml R5_50_UI_DUMP.xml >/dev/null || true
-            if [ -f R5_50_UI_DUMP.xml ]; then
-              ! grep -q "INTERFACE NÃO INICIALIZOU" R5_50_UI_DUMP.xml
-              ! grep -q "Invalid or unexpected token" R5_50_UI_DUMP.xml
-            fi
-            adb exec-out screencap -p > R5_50_SESSION_ANDROID.png
-            adb shell input tap 1040 540
-            sleep 7
-            adb exec-out screencap -p > R5_50_INVENTORY_ANDROID.png
-            adb shell input swipe 720 2460 720 720 900
-            sleep 3
-            adb exec-out screencap -p > R5_50_INVENTORY_SCROLL_ANDROID.png
-            test -s R5_50_SESSION_ANDROID.png
-            test -s R5_50_INVENTORY_ANDROID.png
-            test -s R5_50_INVENTORY_SCROLL_ANDROID.png
-            ! cmp -s R5_50_INVENTORY_ANDROID.png R5_50_INVENTORY_SCROLL_ANDROID.png
-            adb logcat -d -t 1200 > R5_50_LOGCAT.txt
-            ! grep -q "Invalid or unexpected token" R5_50_LOGCAT.txt
-            ! grep -q "\[CPRED_BOOT\]" R5_50_LOGCAT.txt
-            ! grep -q "FATAL EXCEPTION" R5_50_LOGCAT.txt
 
-      - name: Package corrected R5.50 checkpoint
+            adb shell uiautomator dump /sdcard/session.xml >/dev/null || true
+            adb pull /sdcard/session.xml R5_60_SESSION_UI.xml >/dev/null || true
+            if [ -f R5_60_SESSION_UI.xml ]; then
+              ! grep -q "INTERFACE NÃO INICIALIZOU" R5_60_SESSION_UI.xml
+              ! grep -q "Invalid or unexpected token" R5_60_SESSION_UI.xml
+            fi
+            adb exec-out screencap -p > R5_60_SESSION_ANDROID.png
+
+            # Mundo
+            adb shell input tap 430 2940
+            sleep 5
+            adb exec-out screencap -p > R5_60_WORLD_ANDROID.png
+
+            # Mapa
+            adb shell input tap 720 2940
+            sleep 6
+            adb exec-out screencap -p > R5_60_MAP_ANDROID.png
+
+            # Ficha
+            adb shell input tap 1010 2940
+            sleep 5
+            adb exec-out screencap -p > R5_60_SHEET_ANDROID.png
+
+            # Mais
+            adb shell input tap 1295 2940
+            sleep 4
+            adb exec-out screencap -p > R5_60_MORE_ANDROID.png
+
+            for f in R5_60_SESSION_ANDROID.png R5_60_WORLD_ANDROID.png R5_60_MAP_ANDROID.png R5_60_SHEET_ANDROID.png R5_60_MORE_ANDROID.png; do test -s "$f"; done
+
+            adb logcat -d -t 1500 > R5_60_LOGCAT.txt
+            ! grep -q "Invalid or unexpected token" R5_60_LOGCAT.txt
+            ! grep -q "\[CPRED_BOOT\]" R5_60_LOGCAT.txt
+            ! grep -q "FATAL EXCEPTION" R5_60_LOGCAT.txt
+
+      - name: Package R5.60 checkpoint
         shell: bash
         env:
           PROJECT: ${{ steps.src.outputs.project }}
           ROOT: ${{ steps.src.outputs.root }}
         run: |
           set -euo pipefail
+          rm -f "$ROOT/app/src/main/assets/web/app/preview_nojs.html"
           mkdir -p "$PROJECT/project_docs"
-          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX.md" <<'EOF'
-          # Cyberpunk RED R5.50
-          Root cause fixed: an actual LF/LF sequence was injected inside a single-quoted JavaScript string in sheets.js. It is legal-looking in plain text but is a SyntaxError in the Android WebView module parser: "Invalid or unexpected token".
-          R5.50 uses escaped newlines, adds ES-module syntax gates, cache-busts app.js to build 4010, improves boot error source/line diagnostics, and compacts the session controls/voice controls for phone layout.
-          Core item semantic icons remain 123/123 unique.
-          Runtime weapon coverage remains 155/155.
-          Android version: 4.0.10 / 4010.
+          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_60_UI_REBUILD.md" <<'EOF'
+          # Cyberpunk RED R5.60 — Interface Rebuild
+          Persistent bottom navigation: SESSÃO | MUNDO | MAPA | FICHA | MAIS.
+          Session order: Mundo Vivo -> NPCs presentes -> imagem da cena -> Mestre -> estado contextual -> ações sugeridas -> ação livre -> imagem/TTS/Biblioteca.
+          Mundo Vivo is a dedicated screen.
+          Biblioteca remains a dedicated screen.
+          Street Stories and Vehicle are standalone screens reachable from Mais.
+          NPCs now have a persistent visual registry: generated/imported identity is tied to that NPC and reused.
+          Scene images remain scene-bound.
+          Player portrait/token remain character-bound.
+          UI structure uses HTML/CSS; no decorative structural image layer was introduced.
+          Core equipment assets remain 123/123 unique semantic assets.
+          Runtime weapon asset coverage remains 155/155.
+          Android version: 4.1.0 / 4100.
           EOF
           rm -rf "$ROOT/.gradle" "$ROOT/build" "$ROOT/app/build"
-          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip"
-          PARENT="$(dirname "$PROJECT")"; NAME="$(basename "$PROJECT")"
+          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip"
+          PARENT="$(dirname "$PROJECT")";NAME="$(basename "$PROJECT")"
           (cd "$PARENT" && zip -qr "$OUT" "$NAME")
-          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_50_ZIP_INTEGRITY.txt"
-          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip.sha256"
-          sha256sum R5_50_SESSION_ANDROID.png R5_50_INVENTORY_ANDROID.png R5_50_INVENTORY_SCROLL_ANDROID.png > R5_50_SCREENSHOTS.sha256
+          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_60_ZIP_INTEGRITY.txt"
+          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip.sha256"
+          sha256sum R5_60_SESSION_ANDROID.png R5_60_WORLD_ANDROID.png R5_60_MAP_ANDROID.png R5_60_SHEET_ANDROID.png R5_60_MORE_ANDROID.png > R5_60_SCREENSHOTS.sha256
 
-      - name: Publish R5.50 release
+      - name: Publish R5.60 release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
-          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Cyberpunk RED R5.50 — Boot + UI Hotfix" --notes "Fixes the real Samsung/WebView crash shown as INTERFACE NÃO INICIALIZOU / Invalid or unexpected token. Root cause was a literal multiline single-quoted string in sheets.js. R5.50 adds module-mode syntax gating, cache-busting, improved boot diagnostics, and compact phone session controls. Core semantic icons remain 123/123 and runtime weapon coverage remains 155/155. Android compile/install/launch/scroll smoke included."
-          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk.sha256             APK_BADGING_R550.txt APK_SIGNATURE_R550.txt             CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip             CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip.sha256             R5_50_ZIP_INTEGRITY.txt             R5_50_SESSION_ANDROID.png R5_50_INVENTORY_ANDROID.png R5_50_INVENTORY_SCROLL_ANDROID.png             R5_50_SCREENSHOTS.sha256 R5_50_LOGCAT.txt R5_50_UI_DUMP.xml
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "Cyberpunk RED R5.60 — Interface Rebuild"             --notes "New mobile shell built around SESSÃO | MUNDO | MAPA | FICHA | MAIS. Session is now vertical: Living World, scene NPCs, scene image, Master narration, contextual character state, suggested choices, free action and image/TTS controls. Living World, Library, Street Stories and Vehicle have dedicated destinations. NPC visuals can be generated/imported once and persist to that NPC. Android build/install/launch and five-screen smoke captures are included."
+          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk.sha256             APK_BADGING_R560.txt APK_SIGNATURE_R560.txt             CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip             CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip.sha256             R5_60_ZIP_INTEGRITY.txt             R5_60_SESSION_ANDROID.png R5_60_WORLD_ANDROID.png R5_60_MAP_ANDROID.png R5_60_SHEET_ANDROID.png R5_60_MORE_ANDROID.png             R5_60_SCREENSHOTS.sha256 R5_60_LOGCAT.txt R5_60_SESSION_UI.xml
