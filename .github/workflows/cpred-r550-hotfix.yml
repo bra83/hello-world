@@ -1,0 +1,256 @@
+name: Cyberpunk RED R5.50 boot + UI hotfix
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/cpred-r550-hotfix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASE_URL: "https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r5.49-real-device-fix/CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip"
+  BASE_SHA256: "a47e6c46ac3683d85eacda58f083aef308ddcb737ceb28fd39b42f579ee1577a"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+  RELEASE_TAG: "cyberpunk-red-r5.50-boot-ui-hotfix"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified R5.49 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 2 -o base.zip "$BASE_URL"
+          echo "$BASE_SHA256  base.zip" | sha256sum -c -
+          unzip -t base.zip >/dev/null
+
+      - name: Apply R5.50 boot and phone UI hotfix
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work && mkdir work
+          unzip -q base.zip -d work
+          PROJECT="$(find work -mindepth 1 -maxdepth 1 -type d | head -1)"
+          ROOT="$PROJECT/android"
+          test -f "$ROOT/settings.gradle.kts"
+          chmod +x "$ROOT/gradlew"
+          export ROOT
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,re
+          root=Path(os.environ['ROOT'])
+          app=root/'app/src/main/assets/web/app'
+
+          p=app/'sheets.js'
+          s=p.read_text(encoding='utf-8')
+          bad="openingNarration(){return 'GERANDO CENA COM GEMINI…\n\nAguarde a resposta do Mestre. Se a API falhar, o motivo será mostrado aqui em vez de uma abertura genérica.'}"
+          good="openingNarration(){return 'GERANDO CENA COM GEMINI…\\n\\nAguarde a resposta do Mestre. Se a API falhar, o motivo será mostrado aqui em vez de uma abertura genérica.'}"
+          if bad in s:
+              s=s.replace(bad,good)
+          # also normalize any accidentally generated multiline literal variant
+          s=re.sub(
+              r"openingNarration\(\)\{return 'GERANDO CENA COM GEMINI…\s*\n\s*\nAguarde a resposta do Mestre\. Se a API falhar, o motivo será mostrado aqui em vez de uma abertura genérica\.'\}",
+              good,
+              s,
+              flags=re.M
+          )
+          p.write_text(s,encoding='utf-8')
+
+          p=app/'index.html'
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r"app\.js\?build=\d+","app.js?build=4010",s)
+          s=s.replace(
+              "window.addEventListener('error',event=>window.__cpredBootFail(event.error||event.message));",
+              "window.addEventListener('error',event=>window.__cpredBootFail((event.error||event.message)+' @ '+(event.filename||'inline')+':'+(event.lineno||0)+':'+(event.colno||0)));"
+          )
+          p.write_text(s,encoding='utf-8')
+
+          p=app/'styles.css'
+          s=p.read_text(encoding='utf-8')
+          addon=r'''
+/* R5.50 physical-phone session cleanup */
+.session-campaign-bar{grid-template-columns:1.2fr 1fr .92fr!important;gap:6px!important;padding:7px 8px!important}
+.session-campaign-bar button{min-height:38px!important;height:38px!important;font-size:7.2px!important;padding:5px 6px!important}
+#sessionRestartBtn{font-size:6.6px!important;line-height:1.15!important}
+.session-console{grid-template-columns:minmax(0,1fr) 108px!important;gap:7px!important;padding:8px!important}
+#sessionActionSend{grid-column:2!important;height:54px!important}
+.session-voice-actions{grid-column:1/-1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;padding:0!important}
+.session-voice-actions button{grid-column:auto!important;height:36px!important;min-height:36px!important;font-size:7px!important;padding:5px!important}
+.session-response{font-size:8.5px!important;line-height:1.5!important}
+@media(max-width:430px){.session-campaign-bar{grid-template-columns:1.16fr .92fr .92fr!important}.session-campaign-bar button{min-height:36px!important;height:36px!important}.session-console{grid-template-columns:minmax(0,1fr) 104px!important}}
+'''
+          if 'R5.50 physical-phone session cleanup' not in s:
+              s += addon
+          p.write_text(s,encoding='utf-8')
+
+          p=root/'app/build.gradle.kts'
+          s=p.read_text(encoding='utf-8')
+          s=re.sub(r'versionCode\s*=\s*\d+','versionCode = 4010',s)
+          s=re.sub(r'versionName\s*=\s*"[^"]+"','versionName = "4.0.10"',s)
+          p.write_text(s,encoding='utf-8')
+
+          print('R5_50_PATCH_APPLIED')
+          PY
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Module syntax and semantic gates
+        shell: bash
+        env:
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          APP="$ROOT/app/src/main/assets/web/app"
+          for f in app.js sheets.js gameplay.js netrun.js atlas.js audio.js; do
+            echo "MODULE_CHECK $f"
+            node --input-type=module --check < "$APP/$f"
+          done
+          python3 - "$ROOT" <<'PY'
+          import json,pathlib,sys,hashlib
+          root=pathlib.Path(sys.argv[1]); app=root/'app/src/main/assets/web/app'; data=app/'data'
+          js=(app/'sheets.js').read_text(encoding='utf-8')
+          assert "openingNarration(){return 'GERANDO CENA COM GEMINI…\\n\\nAguarde" in js
+          assert "GERANDO CENA COM GEMINI…\n\nAguarde" not in js
+          core=json.loads((data/'equipment_catalog.json').read_text(encoding='utf-8'))
+          assert len(core['items'])==123
+          hashes=set()
+          for x in core['items']:
+              q=app/x['asset']; assert q.is_file() and q.stat().st_size>500
+              h=hashlib.sha256(q.read_bytes()).hexdigest(); assert h not in hashes; hashes.add(h)
+          specs=[
+            ('equipment_catalog.json','items',lambda x:x.get('category')=='weapon',16),
+            ('black_chrome_catalog.json','items',lambda x:x.get('category')=='weapon',55),
+            ('interface_red_vol5_toggle_temple.json','items',lambda x:x.get('category')=='weapon',72),
+            ('interface_red_vol2_mechanics.json','gunmasWeapons',lambda x:True,12),
+          ]
+          total=0
+          for fn,key,pred,n in specs:
+              o=json.loads((data/fn).read_text(encoding='utf-8')); rows=[x for x in o[key] if pred(x)]
+              assert len(rows)==n,(fn,len(rows),n); total+=len(rows)
+              for x in rows:
+                  assert (app/x['asset']).is_file(),(fn,x.get('name'))
+          assert total==155
+          print('R5_50_SEMANTIC_PASS core=123 weapons=155 unique_core_icons=123')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile and assemble R5.50
+        working-directory: ${{ steps.src.outputs.root }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          APK="$(find app/build/outputs/apk/debug -name '*.apk' | sort | head -1)"
+          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk"
+          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" >/dev/null
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R550.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R550.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4010' versionName='4.0.10'" "$GITHUB_WORKSPACE/APK_BADGING_R550.txt"
+          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk.sha256"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Android boot guard and layout smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell wm size 1440x3088
+            adb shell wm density 560
+            adb install -r BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk
+            adb shell am force-stop com.braseiro.cyberpunkred
+            adb shell am start -W -n com.braseiro.cyberpunkred/.MainActivity
+            sleep 16
+            adb shell pidof com.braseiro.cyberpunkred
+            adb shell uiautomator dump /sdcard/r550.xml >/dev/null || true
+            adb pull /sdcard/r550.xml R5_50_UI_DUMP.xml >/dev/null || true
+            if [ -f R5_50_UI_DUMP.xml ]; then
+              ! grep -q "INTERFACE NÃO INICIALIZOU" R5_50_UI_DUMP.xml
+              ! grep -q "Invalid or unexpected token" R5_50_UI_DUMP.xml
+            fi
+            adb exec-out screencap -p > R5_50_SESSION_ANDROID.png
+            adb shell input tap 1040 540
+            sleep 7
+            adb exec-out screencap -p > R5_50_INVENTORY_ANDROID.png
+            adb shell input swipe 720 2460 720 720 900
+            sleep 3
+            adb exec-out screencap -p > R5_50_INVENTORY_SCROLL_ANDROID.png
+            test -s R5_50_SESSION_ANDROID.png
+            test -s R5_50_INVENTORY_ANDROID.png
+            test -s R5_50_INVENTORY_SCROLL_ANDROID.png
+            ! cmp -s R5_50_INVENTORY_ANDROID.png R5_50_INVENTORY_SCROLL_ANDROID.png
+            adb logcat -d -t 1200 > R5_50_LOGCAT.txt
+            ! grep -q "Invalid or unexpected token" R5_50_LOGCAT.txt
+            ! grep -q "\[CPRED_BOOT\]" R5_50_LOGCAT.txt
+            ! grep -q "FATAL EXCEPTION" R5_50_LOGCAT.txt
+
+      - name: Package corrected R5.50 checkpoint
+        shell: bash
+        env:
+          PROJECT: ${{ steps.src.outputs.project }}
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROJECT/project_docs"
+          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX.md" <<'EOF'
+          # Cyberpunk RED R5.50
+          Root cause fixed: an actual LF/LF sequence was injected inside a single-quoted JavaScript string in sheets.js. It is legal-looking in plain text but is a SyntaxError in the Android WebView module parser: "Invalid or unexpected token".
+          R5.50 uses escaped newlines, adds ES-module syntax gates, cache-busts app.js to build 4010, improves boot error source/line diagnostics, and compacts the session controls/voice controls for phone layout.
+          Core item semantic icons remain 123/123 unique.
+          Runtime weapon coverage remains 155/155.
+          Android version: 4.0.10 / 4010.
+          EOF
+          rm -rf "$ROOT/.gradle" "$ROOT/build" "$ROOT/app/build"
+          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip"
+          PARENT="$(dirname "$PROJECT")"; NAME="$(basename "$PROJECT")"
+          (cd "$PARENT" && zip -qr "$OUT" "$NAME")
+          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_50_ZIP_INTEGRITY.txt"
+          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip.sha256"
+          sha256sum R5_50_SESSION_ANDROID.png R5_50_INVENTORY_ANDROID.png R5_50_INVENTORY_SCROLL_ANDROID.png > R5_50_SCREENSHOTS.sha256
+
+      - name: Publish R5.50 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Cyberpunk RED R5.50 — Boot + UI Hotfix" --notes "Fixes the real Samsung/WebView crash shown as INTERFACE NÃO INICIALIZOU / Invalid or unexpected token. Root cause was a literal multiline single-quoted string in sheets.js. R5.50 adds module-mode syntax gating, cache-busting, improved boot diagnostics, and compact phone session controls. Core semantic icons remain 123/123 and runtime weapon coverage remains 155/155. Android compile/install/launch/scroll smoke included."
+          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.50-DEBUG.apk.sha256             APK_BADGING_R550.txt APK_SIGNATURE_R550.txt             CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip             CYBERPUNK_RED_R5_50_BOOT_UI_HOTFIX_CHECKPOINT.zip.sha256             R5_50_ZIP_INTEGRITY.txt             R5_50_SESSION_ANDROID.png R5_50_INVENTORY_ANDROID.png R5_50_INVENTORY_SCROLL_ANDROID.png             R5_50_SCREENSHOTS.sha256 R5_50_LOGCAT.txt R5_50_UI_DUMP.xml
