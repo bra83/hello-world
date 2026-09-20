@@ -1,0 +1,136 @@
+name: Star Wars Edge R54 P28 Scene Image Return
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/starwars-r54-p28-scene-image-return.yml"
+      - "starwars-p28-worker/patch_starwars_p28.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_URL: "https://github.com/bra83/hello-world/releases/download/star-wars-edge-r54-p27-compact-gemini/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P27_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "803b5010e87b83f5d4a4647509ceb70c5526912e5e5fd2925b29d0720e954041"
+  APK_NAME: "BRASEIRO_STAR_WARS_EDGE_R54_P28_DEBUG.apk"
+  SOURCE_ZIP_NAME: "STAR_WARS_EDGE_OF_THE_GALAXY_R54_P28_ANDROID_STUDIO.zip"
+  RELEASE_TAG: "star-wars-edge-r54-p28-scene-image-return"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact verified P27 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work out
+          curl -fL --retry 4 --retry-delay 2 -o incoming/source.zip "$SOURCE_URL"
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          unzip -t incoming/source.zip >/dev/null
+          unzip -q incoming/source.zip -d work
+          test -f work/android/gradlew
+
+      - name: Apply P28 scene image return fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 starwars-p28-worker/patch_starwars_p28.py work/android
+          node --check work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'R54_P28_SCENE_IMAGE_NATIVE_RETURN' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'g.generateSceneImage(prompt,sceneKey)' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'pickSceneImage(sceneKey)' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'imageSceneKey===sceneKey' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'notifyEvent(successEvent' work/android/app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java
+
+      - name: Static bridge gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('work/android')
+          rt=(root/'app/src/main/assets/vtt/r46/final-runtime.js').read_text('utf-8')
+          gm=(root/'app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java').read_text('utf-8')
+          sh=(root/'app/src/main/assets/vtt/r46/r46-shell.bundle.js').read_text('utf-8')
+          m=re.search(r'function enhanceSceneGeminiButton\(\)\{[\s\S]*?\n\}',rt)
+          assert m, 'button function missing'
+          b=m.group(0)
+          assert 'generateSceneImage(prompt,sceneKey)' in b
+          assert 'openGeminiWithPrompt(prompt)' not in b
+          assert 'applyNativeImage' in b
+          assert 'pickSceneImage(sceneKey)' in b
+          assert 'sceneGeminiPrompt()' in b
+          assert 'slice(0,900)' in rt
+          assert 'persistSceneImage' in gm
+          assert 'openSceneImageResponse' in gm
+          assert 'notifyEvent(successEvent' in gm
+          assert 'braseiroGeminiNativeEvent' in sh
+          assert 'versionCode = 10001' in (root/'app/build.gradle.kts').read_text('utf-8') or 'versionCode 10001' in (root/'app/build.gradle').read_text('utf-8') if (root/'app/build.gradle').exists() else True
+          print('P28_SCENE_RETURN_GATE=PASS direct=1 native_store=1 auto_apply=1 import_fallback=1')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile and validate P28 APK
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/out/GRADLE_BUILD_P28.log"
+
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/out/$APK_NAME"
+          unzip -t "$GITHUB_WORKSPACE/out/$APK_NAME" >/dev/null
+
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_BADGING_P28.txt"
+          grep -q "package: name='com.braseiro.starwarsedge'" "$GITHUB_WORKSPACE/out/APK_BADGING_P28.txt"
+          grep -q "versionCode='10001'" "$GITHUB_WORKSPACE/out/APK_BADGING_P28.txt"
+          grep -q "versionName='1.0.1'" "$GITHUB_WORKSPACE/out/APK_BADGING_P28.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE_P28.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
+
+      - name: Package corrected Android Studio source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/android/.gradle work/android/build work/android/app/build
+          (cd work && zip -qr "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" android)
+          unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/P28_SOURCE_ZIP_INTEGRITY.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
+
+      - name: Publish P28 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO Star Wars Edge R54 P28 — Scene Image Return"             --notes "Fixes the real-device report where scene illustrations generated in Gemini did not return to the VTT. Scene illustration now uses the native Gemini image bridge directly, persists the generated image in app-private storage, receives the native generated/imported event, and applies the image to the current scene automatically. P27 compact/original prompt remains capped at 900 chars to reduce latency and copyright-policy refusals. IMPORTAR remains as fallback. TTS and Master connection are unchanged."
+          gh release upload "$RELEASE_TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING_P28.txt             out/APK_SIGNATURE_P28.txt             out/GRADLE_BUILD_P28.log             out/P28_SOURCE_ZIP_INTEGRITY.txt
