@@ -1,4 +1,5 @@
 name: Forbidden Lands 3.3.4 Runtime Fix Build
+# source-exports-fix: 2026-09-20
 
 on:
   push:
@@ -11,11 +12,11 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA256: "47a921062159b9e0d762624e1a20d794dc58c1632eb5863886038fa7a273b86c"
-  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.4_RUNTIME_FIX_CHOICES_GEMINI_SHARE_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "29c4f4204ec68c4a1999e37eda946f92658af5ca3ad0da7363187a035b4e5f7a"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.4_RUNTIME_FIX_CHOICES_GEMINI_SHARE_ANDROID_STUDIO_FIXED.zip"
   FIRE_API: "https://api.firestorage.ai/dev/file"
-  SHARE_ID: "068lbLuogDBQ"
-  FILE_ID: "01a0bdb69dde729087c189aba6b04880"
+  SHARE_ID: "FInzsc7fUZSw"
+  FILE_ID: "01a0bdb909b97739be4dca6dc5b32334"
   RELEASE_TAG: "forbidden-lands-3.3.4-runtime-fix"
   APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.4.apk"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
