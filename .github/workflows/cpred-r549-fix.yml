@@ -1,0 +1,248 @@
+name: Cyberpunk RED R5.49 real-device corrections
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/cpred-r549-fix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASE_URL: "https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r5.48-complete-fix-worker/CYBERPUNK_RED_R5_48_COMPLETE_FIX_CHECKPOINT.zip"
+  BASE_SHA256: "d929a71a050a03cd812eead22dbe76b023f0bad4f248c89ca2fab1292e99b6f2"
+  PATCH_SHARE_URL: "https://firestorage.ai/ja/f/J2Wq8wINzWdS"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+  RELEASE_TAG: "cyberpunk-red-r5.49-real-device-fix"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified R5.48 base and R5.49 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming /tmp/r549-dl
+          curl -fL --retry 4 --retry-delay 2 -o incoming/base.zip "$BASE_URL"
+          echo "$BASE_SHA256  incoming/base.zip" | sha256sum -c -
+          unzip -t incoming/base.zip >/dev/null
+
+          cd /tmp/r549-dl
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.55.0
+          npx playwright install chromium
+          cat > one.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          const [url,out]=process.argv.slice(2);
+          const browser=await chromium.launch({headless:true});
+          const context=await browser.newContext({acceptDownloads:true,locale:'ja-JP'});
+          const page=await context.newPage();
+          await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
+          await page.waitForTimeout(1500);
+          for(let round=0;round<12;round++){
+            const es=page.locator('a,button,[role="button"]');
+            for(let i=0;i<Math.min(await es.count(),200);i++){
+              const e=es.nth(i); let meta='';
+              try{meta=((await e.innerText())+' '+(await e.getAttribute('title')||'')+' '+(await e.getAttribute('aria-label')||'')+' '+(await e.getAttribute('href')||''));}catch{}
+              if(!/download|ダウンロード|保存|取得|file|ファイル/i.test(meta)) continue;
+              try{
+                const wait=page.waitForEvent('download',{timeout:8000});
+                await e.click({timeout:4000});
+                const d=await wait; await d.saveAs(out);
+                console.log('PATCH_DOWNLOAD_OK',await d.suggestedFilename());
+                await browser.close(); process.exit(0);
+              }catch{}
+            }
+            await page.waitForTimeout(1200);
+          }
+          console.error((await page.locator('body').innerText()).slice(0,4000));
+          await browser.close(); process.exit(2);
+          NODE
+          node one.mjs "$PATCH_SHARE_URL" "$GITHUB_WORKSPACE/incoming/patch_r549.py"
+          cd "$GITHUB_WORKSPACE"
+          test -s incoming/patch_r549.py
+          python3 -m py_compile incoming/patch_r549.py
+
+      - name: Apply R5.49 correction
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work
+          mkdir work
+          unzip -q incoming/base.zip -d work
+          PROJECT="$(find work -mindepth 1 -maxdepth 1 -type d | head -1)"
+          ROOT="$PROJECT/android"
+          test -f "$ROOT/settings.gradle.kts"
+          chmod +x "$ROOT/gradlew"
+          python3 incoming/patch_r549.py "$ROOT"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Static semantic gates
+        shell: bash
+        env:
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          node --check "$ROOT/app/src/main/assets/web/app/sheets.js"
+          node --check "$ROOT/app/src/main/assets/web/app/app.js"
+          python3 - "$ROOT" <<'PY'
+          import json,pathlib,sys,hashlib,zipfile
+          root=pathlib.Path(sys.argv[1]); app=root/'app/src/main/assets/web/app'; data=app/'data'
+          for p in root.rglob('*.json'): json.loads(p.read_text(encoding='utf-8'))
+          core=json.loads((data/'equipment_catalog.json').read_text(encoding='utf-8'))
+          assert len(core['items'])==123
+          hashes=set()
+          for x in core['items']:
+              assert x.get('assetKind')=='item_icon', x.get('id')
+              q=app/x['asset']; assert q.is_file() and q.stat().st_size>500,(x.get('id'),x.get('asset'))
+              h=hashlib.sha256(q.read_bytes()).hexdigest(); assert h not in hashes,x.get('id'); hashes.add(h)
+          specs=[
+            ('equipment_catalog.json','items',lambda x:x.get('category')=='weapon',16),
+            ('black_chrome_catalog.json','items',lambda x:x.get('category')=='weapon',55),
+            ('interface_red_vol5_toggle_temple.json','items',lambda x:x.get('category')=='weapon',72),
+            ('interface_red_vol2_mechanics.json','gunmasWeapons',lambda x:True,12),
+          ]
+          total=0
+          for fn,key,pred,n in specs:
+              o=json.loads((data/fn).read_text(encoding='utf-8')); rows=[x for x in o[key] if pred(x)]
+              assert len(rows)==n,(fn,len(rows),n); total+=len(rows)
+              for x in rows:
+                  assert x.get('assetKind')=='item_icon',(fn,x.get('name'))
+                  assert (app/x['asset']).is_file(),(fn,x.get('name'))
+          assert total==155
+          js=(app/'sheets.js').read_text(encoding='utf-8')
+          assert 'A cidade não reiniciou com você' not in js
+          assert "source!=='provider'" in js
+          assert 'Nenhum texto genérico será exibido' in js
+          html=(app/'index.html').read_text(encoding='utf-8')
+          assert '<footer>' not in html
+          with zipfile.ZipFile(root/'app/wheels/motor_barbara-1.1.2-py3-none-any.whl') as z:
+              g=z.read('barbara/gemini.py').decode('utf-8')
+              assert 'gemini-3.8-flash' in g
+              assert "'temperature':0.35" not in g
+          print('R5_49_STATIC_PASS core=123 weapons=155 unique_icons=123')
+          PY
+          [ ! -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs" ] || (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs)
+          [ ! -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_46.mjs" ] || (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_46.mjs)
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile and assemble R5.49
+        working-directory: ${{ steps.src.outputs.root }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          APK="$(find app/build/outputs/apk/debug -name '*.apk' | sort | head -1)"
+          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk"
+          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk" >/dev/null
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R549.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R549.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4009' versionName='4.0.9'" "$GITHUB_WORKSPACE/APK_BADGING_R549.txt"
+          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk.sha256"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Android real-layout smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell wm size 1440x3088
+            adb shell wm density 560
+            adb install -r BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk
+            adb shell am force-stop com.braseiro.cyberpunkred
+            adb shell am start -W -n com.braseiro.cyberpunkred/.MainActivity
+            sleep 16
+            adb shell pidof com.braseiro.cyberpunkred
+            adb exec-out screencap -p > R5_49_SESSION_ANDROID.png
+            adb shell input tap 1040 540
+            sleep 7
+            adb exec-out screencap -p > R5_49_INVENTORY_TOP_ANDROID.png
+            adb shell input swipe 720 2460 720 720 900
+            sleep 3
+            adb shell input swipe 720 2460 720 720 900
+            sleep 3
+            adb exec-out screencap -p > R5_49_INVENTORY_GEAR_ANDROID.png
+            test -s R5_49_SESSION_ANDROID.png
+            test -s R5_49_INVENTORY_TOP_ANDROID.png
+            test -s R5_49_INVENTORY_GEAR_ANDROID.png
+            ! cmp -s R5_49_INVENTORY_TOP_ANDROID.png R5_49_INVENTORY_GEAR_ANDROID.png
+            adb logcat -d -t 1000 > R5_49_LOGCAT.txt
+            ! grep -q "barbara_platform_not_configurated" R5_49_LOGCAT.txt
+            ! grep -q "FATAL EXCEPTION" R5_49_LOGCAT.txt
+
+      - name: Package corrected source
+        shell: bash
+        env:
+          PROJECT: ${{ steps.src.outputs.project }}
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROJECT/project_docs"
+          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX.md" <<'EOF'
+          # Cyberpunk RED R5.49 — real-device correction
+          - Generic hard-coded opening removed from gameplay.
+          - Gemini narration is accepted only when Motor Barbara reports narration_source=provider.
+          - Deterministic fallback is never disguised as Gemini; exact failure status is shown.
+          - New-install/default model migrated to gemini-3.8-flash; deprecated sampling temperature removed from Motor Barbara request.
+          - Core catalog: 123/123 item-specific vector icons.
+          - Runtime weapons across Core + Black Chrome + Interface RED Vol.5 + Gunmas: 155/155 item icons; no random unrelated scraped photo pooling.
+          - Armor uses armor/helmet icons, never unrelated full-body character photos.
+          - Debug footer removed from gameplay viewport; diagnostics moved under Mais.
+          - Inventory cards compacted for physical-phone layout.
+          - Package com.braseiro.cyberpunkred, version 4.0.9 (4009).
+          EOF
+          rm -rf "$ROOT/.gradle" "$ROOT/build" "$ROOT/app/build"
+          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip"
+          PARENT="$(dirname "$PROJECT")"; NAME="$(basename "$PROJECT")"
+          (cd "$PARENT" && zip -qr "$OUT" "$NAME")
+          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_49_ZIP_INTEGRITY.txt"
+          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip.sha256"
+          sha256sum R5_49_SESSION_ANDROID.png R5_49_INVENTORY_TOP_ANDROID.png R5_49_INVENTORY_GEAR_ANDROID.png > R5_49_SCREENSHOTS.sha256
+
+      - name: Publish R5.49 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Cyberpunk RED R5.49 — Gemini + Inventory + UI Fix" --notes "Corrects the real-device issues reported from Samsung screenshots: generic local narration can no longer masquerade as Gemini; Core items and armor use semantic item-specific icons; all 155 runtime weapon entries use truthful item icons instead of random pooled weapon photos; fixed debug footer is removed from gameplay; inventory is compact. Android build/install/launch/inventory scroll smoke included. CI has no user's Gemini API key, so the release verifies the runtime path and honest failure reporting, not a production-key call."
+          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.49-DEBUG.apk.sha256             APK_BADGING_R549.txt APK_SIGNATURE_R549.txt             CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip             CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip.sha256             R5_49_ZIP_INTEGRITY.txt             R5_49_SESSION_ANDROID.png R5_49_INVENTORY_TOP_ANDROID.png R5_49_INVENTORY_GEAR_ANDROID.png             R5_49_SCREENSHOTS.sha256 R5_49_LOGCAT.txt
