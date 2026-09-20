@@ -222,10 +222,8 @@ jobs:
 
             adb shell uiautomator dump /sdcard/session.xml >/dev/null || true
             adb pull /sdcard/session.xml R5_60_SESSION_UI.xml >/dev/null || true
-            if [ -f R5_60_SESSION_UI.xml ]; then
-              ! grep -q "INTERFACE NÃO INICIALIZOU" R5_60_SESSION_UI.xml
-              ! grep -q "Invalid or unexpected token" R5_60_SESSION_UI.xml
-            fi
+            test ! -f R5_60_SESSION_UI.xml || ! grep -q "INTERFACE NÃO INICIALIZOU" R5_60_SESSION_UI.xml
+            test ! -f R5_60_SESSION_UI.xml || ! grep -q "Invalid or unexpected token" R5_60_SESSION_UI.xml
             adb exec-out screencap -p > R5_60_SESSION_ANDROID.png
 
             # Mundo
