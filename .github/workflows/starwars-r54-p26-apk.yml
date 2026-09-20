@@ -275,8 +275,12 @@ jobs:
             adb shell pidof com.braseiro.starwarsedge
             adb exec-out screencap -p > out/P26_SESSION_ANDROID_S23_PROFILE.png
             test -s out/P26_SESSION_ANDROID_S23_PROFILE.png
-            adb logcat -d -t 800 > out/P26_LOGCAT.txt
-            ! grep -q "FATAL EXCEPTION" out/P26_LOGCAT.txt
+            adb logcat -d -t 800 > out/P26_LOGCAT.txt 2>&1 || true
+            test -e out/P26_LOGCAT.txt || touch out/P26_LOGCAT.txt
+            if grep -q "FATAL EXCEPTION" out/P26_LOGCAT.txt; then
+              echo "FATAL_EXCEPTION_FOUND"
+              exit 1
+            fi
 
       - name: Package Android Studio source
         shell: bash
