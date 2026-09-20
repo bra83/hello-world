@@ -99,6 +99,16 @@ if needle in g:
     g=g.replace(needle,"connection.setReadTimeout(90000);\n            connection.setRequestMethod(\"POST\");",1)
 gemini.write_text(g,"utf-8")
 
+# Bump app version so the corrected APK is distinguishable from P26/P27.
+build=root/"app/build.gradle"
+build_kts=root/"app/build.gradle.kts"
+bp=build_kts if build_kts.is_file() else build
+if bp.is_file():
+    bs=bp.read_text("utf-8")
+    bs=re.sub(r"versionCode\s*[= ]\s*\d+","versionCode = 10001",bs,count=1)
+    bs=re.sub(r'versionName\s*[= ]\s*"[^"]+"','versionName = "1.0.1"',bs,count=1)
+    bp.write_text(bs,"utf-8")
+
 rt=runtime.read_text("utf-8");g=gemini.read_text("utf-8");sh=shell.read_text("utf-8")
 assert "g.generateSceneImage(prompt,sceneKey)" in rt
 assert "g.openGeminiWithPrompt(prompt)" not in re.search(r"function enhanceSceneGeminiButton\(\)\{[\s\S]*?\n\}",rt).group(0)
