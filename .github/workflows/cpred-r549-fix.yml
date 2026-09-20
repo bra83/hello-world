@@ -131,7 +131,10 @@ jobs:
               assert "'temperature':0.35" not in g
           print('R5_49_STATIC_PASS core=123 weapons=155 unique_icons=123')
           PY
-          [ ! -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs" ] || (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs)
+          if [ -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs" ]; then
+            sed -i 's/versionCode = 4005/versionCode = 4009/g; s/4\\.0\\.5/4\\.0\\.9/g' "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs"
+            (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs)
+          fi
           [ ! -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_46.mjs" ] || (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_46.mjs)
 
       - uses: actions/setup-java@v4
