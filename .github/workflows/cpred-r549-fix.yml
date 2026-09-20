@@ -190,9 +190,9 @@ jobs:
           cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk"
           unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" >/dev/null
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R560.txt"
-          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R560.txt"
-          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4100' versionName='4.1.0'" "$GITHUB_WORKSPACE/APK_BADGING_R560.txt"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R561.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R561.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4100' versionName='4.1.0'" "$GITHUB_WORKSPACE/APK_BADGING_R561.txt"
           sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256"
 
       - name: Enable KVM
@@ -294,8 +294,8 @@ jobs:
           path: |
             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk
             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256
-            APK_BADGING_R560.txt
-            APK_SIGNATURE_R560.txt
+            APK_BADGING_R561.txt
+            APK_SIGNATURE_R561.txt
             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip
             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip.sha256
             R5_61_ZIP_INTEGRITY.txt
@@ -320,4 +320,4 @@ jobs:
           set -euo pipefail
           gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
           gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "Cyberpunk RED R5.61 — Concept Authority"             --notes "Concept-faithful mobile shell built around SESSÃO | MUNDO | MAPA | FICHA | MAIS. Session is now vertical: Living World, scene NPCs, scene image, Master narration, contextual character state, suggested choices, free action and image/TTS controls. Living World, Library, Street Stories and Vehicle have dedicated destinations. NPC visuals can be generated/imported once and persist to that NPC. Android build/install/launch and five-screen smoke captures are included."
-          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256             APK_BADGING_R560.txt APK_SIGNATURE_R560.txt             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip.sha256             R5_61_ZIP_INTEGRITY.txt             R5_61_SESSION_ANDROID.png R5_61_WORLD_ANDROID.png R5_61_MAP_ANDROID.png R5_61_SHEET_ANDROID.png R5_61_MORE_ANDROID.png             R5_61_SCREENSHOTS.sha256 R5_61_LOGCAT.txt R5_61_SESSION_UI.xml
+          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256             APK_BADGING_R561.txt APK_SIGNATURE_R561.txt             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip.sha256             R5_61_ZIP_INTEGRITY.txt             R5_61_SESSION_ANDROID.png R5_61_WORLD_ANDROID.png R5_61_MAP_ANDROID.png R5_61_SHEET_ANDROID.png R5_61_MORE_ANDROID.png             R5_61_SCREENSHOTS.sha256 R5_61_LOGCAT.txt R5_61_SESSION_UI.xml
