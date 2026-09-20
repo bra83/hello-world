@@ -156,7 +156,7 @@ rt=replace_function(rt,'enhanceSceneGeminiButton',new_button)
 
 # Remove every P28 IMPORTAR artifact from runtime if any remained.
 rt=rt.replace('⇧ IMPORTAR','')
-rt=rt.replace("data-action="import"","data-action="removed-import"")
+rt=rt.replace('data-action="import"','data-action="removed-import"')
 # Ensure no external Gemini handoff is used by scene illustration.
 scene=re.search(r"function enhanceSceneGeminiButton\(\)\{[\s\S]*?\n\}",rt)
 if not scene: raise SystemExit("scene button block missing after patch")
