@@ -1,4 +1,5 @@
 name: Forbidden Lands 3.3.3 Runtime Hotfix Build
+# emulator-shell-fix: 2026-09-20
 
 on:
   push:
@@ -175,7 +176,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             adb shell wm size 1440x3088
             adb shell wm density 560
             adb install -r "$APK_NAME"
