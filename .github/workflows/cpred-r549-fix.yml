@@ -311,13 +311,8 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      - name: Publish R5.61 release
-        continue-on-error: true
+      - name: Release blocked pending visual approval
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
-          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "Cyberpunk RED R5.61 — Concept Authority"             --notes "Concept-faithful mobile shell built around SESSÃO | MUNDO | MAPA | FICHA | MAIS. Session is now vertical: Living World, scene NPCs, scene image, Master narration, contextual character state, suggested choices, free action and image/TTS controls. Living World, Library, Street Stories and Vehicle have dedicated destinations. NPC visuals can be generated/imported once and persist to that NPC. Android build/install/launch and five-screen smoke captures are included."
-          gh release upload "$RELEASE_TAG"             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk             BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256             APK_BADGING_R561.txt APK_SIGNATURE_R561.txt             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip             CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip.sha256             R5_61_ZIP_INTEGRITY.txt             R5_61_SESSION_ANDROID.png R5_61_WORLD_ANDROID.png R5_61_MAP_ANDROID.png R5_61_SHEET_ANDROID.png R5_61_MORE_ANDROID.png             R5_61_SCREENSHOTS.sha256 R5_61_LOGCAT.txt R5_61_SESSION_UI.xml
+          echo "RELEASE_BLOCKED_BY_USER_VISUAL_GATE=1"
+          echo "R5.61 remains workflow artifact only until concept overlay/diff is approved."
