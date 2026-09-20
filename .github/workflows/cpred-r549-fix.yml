@@ -285,7 +285,33 @@ jobs:
           sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip.sha256"
           sha256sum R5_60_SESSION_ANDROID.png R5_60_WORLD_ANDROID.png R5_60_MAP_ANDROID.png R5_60_SHEET_ANDROID.png R5_60_MORE_ANDROID.png > R5_60_SCREENSHOTS.sha256
 
+      - name: Upload R5.60 verified artifact
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberpunk-red-r5.60-verified
+          path: |
+            BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk
+            BRASEIRO-CYBERPUNK-RED-R5.60-DEBUG.apk.sha256
+            APK_BADGING_R560.txt
+            APK_SIGNATURE_R560.txt
+            CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip
+            CYBERPUNK_RED_R5_60_UI_REBUILD_CHECKPOINT.zip.sha256
+            R5_60_ZIP_INTEGRITY.txt
+            R5_60_SESSION_ANDROID.png
+            R5_60_WORLD_ANDROID.png
+            R5_60_MAP_ANDROID.png
+            R5_60_SHEET_ANDROID.png
+            R5_60_MORE_ANDROID.png
+            R5_60_SCREENSHOTS.sha256
+            R5_60_LOGCAT.txt
+            R5_60_SESSION_UI.xml
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
       - name: Publish R5.60 release
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
