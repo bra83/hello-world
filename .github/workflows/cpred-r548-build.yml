@@ -357,6 +357,18 @@ jobs:
           for p in root.rglob('*.xml'): ET.parse(p); x+=1
           print('JSON_XML_PASS',j,x)
           PY
+          python3 - "$ROOT" <<'PY'
+          import pathlib,sys
+          root=pathlib.Path(sys.argv[1])
+          p=root/'app/src/main/java/com/braseiro/cyberpunkred/MainActivity.kt'
+          s=p.read_text(encoding='utf-8')
+          if 'import androidx.core.view.WindowCompat' not in s:
+              s=s.replace('import androidx.appcompat.app.AppCompatActivity\n','import androidx.appcompat.app.AppCompatActivity\nimport androidx.core.view.WindowCompat\n',1)
+          if 'WindowCompat.setDecorFitsSystemWindows(window, true)' not in s:
+              s=s.replace('super.onCreate(savedInstanceState)','super.onCreate(savedInstanceState)\n        WindowCompat.setDecorFitsSystemWindows(window, true)',1)
+          p.write_text(s,encoding='utf-8')
+          print('SYSTEM_BAR_INSETS_FIX_APPLIED')
+          PY
           [ ! -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs" ] || (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_45.mjs)
           [ ! -f "$ROOT/qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_46.mjs" ] || (cd "$ROOT" && node qa/DEVICE_RUNTIME_RECOVERY_GATE_R5_46.mjs)
 
