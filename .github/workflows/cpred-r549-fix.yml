@@ -192,7 +192,7 @@ jobs:
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R562.txt"
           "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R562.txt"
-          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4100' versionName='4.1.0'" "$GITHUB_WORKSPACE/APK_BADGING_R562.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4162' versionName='4.1.62'" "$GITHUB_WORKSPACE/APK_BADGING_R562.txt"
           sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk.sha256"
 
       - name: Enable KVM
