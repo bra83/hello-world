@@ -1,0 +1,133 @@
+name: Star Wars Edge R54 P27 Compact Gemini
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/starwars-r54-p27-compact-gemini.yml"
+      - "starwars-p27-worker/patch_starwars_p27.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_URL: "https://github.com/bra83/hello-world/releases/download/star-wars-edge-r54-p26-worker/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P26_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "864d318d7fcaaa7013e5cf3ce05aa85180a8a71fe6c196427f528f8292e869d6"
+  APK_NAME: "BRASEIRO_STAR_WARS_EDGE_R54_P27_DEBUG.apk"
+  SOURCE_ZIP_NAME: "STAR_WARS_EDGE_OF_THE_GALAXY_R54_P27_ANDROID_STUDIO.zip"
+  RELEASE_TAG: "star-wars-edge-r54-p27-compact-gemini"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact verified P26 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work out
+          curl -fL --retry 4 --retry-delay 2 -o incoming/source.zip "$SOURCE_URL"
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          unzip -t incoming/source.zip >/dev/null
+          unzip -q incoming/source.zip -d work
+          test -f work/android/gradlew
+          test -f work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          test -f work/android/app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java
+
+      - name: Apply P27 compact prompt and performance patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 starwars-p27-worker/patch_starwars_p27.py work/android
+          node --check work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'R54_P27_COMPACT_GEMINI_PROMPT' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'slice(0,900)' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          ! grep -Fq '900-1400 palavras' work/android/app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java
+          grep -Fq '280-480 palavras' work/android/app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java
+          grep -Fq 'Prompt visual inválido ou excessivo' work/android/app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java
+
+      - name: P27 semantic gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('work/android')
+          r=(root/'app/src/main/assets/vtt/r46/final-runtime.js').read_text('utf-8')
+          g=(root/'app/src/main/java/com/braseiro/starwarsedge/GeminiBridge.java').read_text('utf-8')
+          m=re.search(r'function sceneGeminiPrompt\(\)\{[\s\S]*?\n\}',r)
+          assert m, 'sceneGeminiPrompt missing'
+          b=m.group(0)
+          assert 'slice(0,900)' in b
+          assert 'STAR WARS' not in b.upper()
+          assert 'Narração visível ao jogador' not in b
+          assert 'Não copie filmes' in b
+          assert 'mundo desértico árido de dois sóis' in b
+          assert 'metrópole vertical decadente em lua industrial' in b
+          assert 'setTimeout(()=>{scheduled=false;enhance()},120)' in r
+          assert 'r54TickTimer=setTimeout' in r
+          assert '280-480 palavras' in g
+          assert '120-240 palavras' in g
+          assert '> 2200' in g or '>2200' in g
+          print('P27_SEMANTIC_GATE=PASS prompt_cap=900 master=280-480 transition=120-240 observers=throttled')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile and validate APK
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/out/GRADLE_BUILD_P27.log"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/out/$APK_NAME"
+          unzip -t "$GITHUB_WORKSPACE/out/$APK_NAME" >/dev/null
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_BADGING_P27.txt"
+          grep -q "package: name='com.braseiro.starwarsedge'" "$GITHUB_WORKSPACE/out/APK_BADGING_P27.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE_P27.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
+
+      - name: Package corrected Android Studio source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/android/.gradle work/android/build work/android/app/build
+          (cd work && zip -qr "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" android)
+          unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/P27_SOURCE_ZIP_INTEGRITY.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
+
+      - name: Publish P27 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO Star Wars Edge R54 P27 — Compact Gemini"             --notes "P27 keeps the verified P26 baseline but fixes the user-reported latency and Gemini image refusals. The external image prompt is capped at 900 characters, no longer copies the full narration, and uses original generic space-opera descriptors instead of asking Gemini to reproduce a franchise. It explicitly forbids copying existing characters, vehicles, uniforms, logos or designs. Master narration is reduced from 900-1400 words to 280-480 words for major scenes and 120-240 for transitions. Expensive DOM enhancement observers are throttled. TTS and connection code are otherwise preserved."
+          gh release upload "$RELEASE_TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING_P27.txt             out/APK_SIGNATURE_P27.txt             out/GRADLE_BUILD_P27.log             out/P27_SOURCE_ZIP_INTEGRITY.txt
