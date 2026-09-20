@@ -1,4 +1,5 @@
 name: Forbidden Lands 3.3.2 build worker
+# fixed-public-npm-lock: 2026-09-20
 
 on:
   push:
@@ -11,11 +12,11 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA256: "83b99e4ced2f635b1c93d79c0dbb9ef5093545ea1c67cf8af2dc88331ce0061c"
-  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.2_TTS_IMAGE_PROMPT_PATCH_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "660a1103c3e929024601b8e61dc9bb58011a7a19829e68440fcd3b48e4b9f9e6"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.2_TTS_IMAGE_PROMPT_ANDROID_STUDIO_FIXED_LOCK.zip"
   FIRE_API: "https://api.firestorage.ai/dev/file"
-  SHARE_ID: "sJUeoArUdSIJ"
-  FILE_ID: "01a0bd4313427307bc87a8337de35d13"
+  SHARE_ID: "czzyxxPiC5kr"
+  FILE_ID: "01a0bd7c3796770bb84be4f94aaaab44"
   RELEASE_TAG: "forbidden-lands-3.3.2-worker"
   APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.2.apk"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
