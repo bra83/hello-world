@@ -446,34 +446,16 @@ jobs:
             sleep 15
             adb shell pidof com.braseiro.cyberpunkred
             adb exec-out screencap -p > R5_48_SESSION_ANDROID_S23_PROFILE.png
-
-            adb shell uiautomator dump /sdcard/window.xml >/dev/null || true
-            adb pull /sdcard/window.xml window.xml >/dev/null || true
-            python3 - <<'PY'
-            import xml.etree.ElementTree as ET,re,subprocess,os
-            x=y=None
-            if os.path.exists('window.xml'):
-              try:
-                root=ET.parse('window.xml').getroot()
-                for n in root.iter('node'):
-                  if (n.attrib.get('text') or '').strip().lower() in ('inventário','inventario'):
-                    m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
-                    if m:
-                      a,b,c,d=map(int,m.groups()); x=(a+c)//2; y=(b+d)//2; break
-              except Exception: pass
-            if x is None: x,y=1040,540
-            subprocess.check_call(['adb','shell','input','tap',str(x),str(y)])
-            PY
+            adb shell input tap 1040 540
             sleep 8
             adb exec-out screencap -p > R5_48_INVENTORY_ANDROID_S23_PROFILE.png
             adb shell input swipe 720 2450 720 850 800
             sleep 3
             adb exec-out screencap -p > R5_48_INVENTORY_SCROLL_ANDROID_S23_PROFILE.png
+            test -s R5_48_SESSION_ANDROID_S23_PROFILE.png
             test -s R5_48_INVENTORY_ANDROID_S23_PROFILE.png
             test -s R5_48_INVENTORY_SCROLL_ANDROID_S23_PROFILE.png
-            cmp -s R5_48_INVENTORY_ANDROID_S23_PROFILE.png R5_48_INVENTORY_SCROLL_ANDROID_S23_PROFILE.png && {
-              echo "::error::Inventory screenshot unchanged after swipe"; exit 1;
-            }
+            ! cmp -s R5_48_INVENTORY_ANDROID_S23_PROFILE.png R5_48_INVENTORY_SCROLL_ANDROID_S23_PROFILE.png
             adb logcat -d -t 800 > R5_48_LOGCAT.txt
             ! grep -q "barbara_platform_not_configurated" R5_48_LOGCAT.txt
             ! grep -q "FATAL EXCEPTION" R5_48_LOGCAT.txt
