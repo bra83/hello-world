@@ -1,4 +1,4 @@
-name: Cyberpunk RED R5.61 interface rebuild
+name: Cyberpunk RED R5.62 interface rebuild
 
 on:
   push:
@@ -13,9 +13,9 @@ permissions:
 env:
   BASE_URL: "https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r5.49-real-device-fix/CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip"
   BASE_SHA256: "a47e6c46ac3683d85eacda58f083aef308ddcb737ceb28fd39b42f579ee1577a"
-  OVERLAY_URL: "https://firestorage.ai/ja/f/tSd8hdkU4qCd"
-  OVERLAY_SHA256: "d3832a6bf8fa0a3d5f1d46dd6ecb9a25784adb5d212aa7854efdd514340357b8"
-  RELEASE_TAG: "cyberpunk-red-r5.61-concept-authority"
+  OVERLAY_URL: "https://firestorage.ai/ja/f/-_jRNuU68XWY"
+  OVERLAY_SHA256: "01f0b839cee85f729144fa7f835874395a8d4c2468353c1287f5ce769ed0b51b"
+  RELEASE_TAG: "cyberpunk-red-r5.62-concept-pixelmatch"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
   ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
 
@@ -36,7 +36,7 @@ jobs:
           echo "$BASE_SHA256  incoming/base.zip" | sha256sum -c -
           unzip -t incoming/base.zip >/dev/null
 
-      - name: Download exact R5.61 UI overlay
+      - name: Download exact R5.62 UI overlay
         shell: bash
         run: |
           set -euo pipefail
@@ -81,7 +81,7 @@ jobs:
           echo "$OVERLAY_SHA256  incoming/overlay.zip" | sha256sum -c -
           unzip -t incoming/overlay.zip >/dev/null
 
-      - name: Assemble R5.61 source
+      - name: Assemble R5.62 source
         id: src
         shell: bash
         run: |
@@ -94,8 +94,8 @@ jobs:
           test -f "$ROOT/settings.gradle.kts"
           unzip -oq incoming/overlay.zip -d "$ROOT"
           chmod +x "$ROOT/gradlew"
-          grep -F 'versionCode = 4161' "$ROOT/app/build.gradle.kts"
-          grep -F 'versionName = "4.1.61"' "$ROOT/app/build.gradle.kts"
+          grep -F 'versionCode = 4162' "$ROOT/app/build.gradle.kts"
+          grep -F 'versionName = "4.1.62"' "$ROOT/app/build.gradle.kts"
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
 
@@ -127,7 +127,7 @@ jobs:
               assert f'id="{id_}"' in html,id_
           assert 'bottom-nav' in html
           assert 'interface_v2.css' in html
-          assert 'app.js?build=4161' in html
+          assert 'app.js?build=4162' in html
           assert 'data-tab="stories"' in html and 'id="tab-stories"' in html
           assert 'data-tab="vehicle"' in html and 'id="tab-vehicle"' in html
           assert 'sceneNpcKey(n)' in sheets and 'npcVisualRegistry' in sheets and 'importNpcVisual' in sheets
@@ -158,7 +158,7 @@ jobs:
               assert len(rows)==n,(fn,len(rows),n);total+=len(rows)
               for x in rows: assert (app/x['asset']).is_file(),(fn,x.get('name'),x.get('asset'))
           assert total==155
-          print('R5_61_UI_GATE_PASS core_items=123 weapons=155 unique_core_assets=123')
+          print('R5_62_UI_GATE_PASS core_items=123 weapons=155 unique_core_assets=123')
           PY
 
       - uses: actions/setup-java@v4
@@ -177,7 +177,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile R5.61
+      - name: Compile R5.62
         working-directory: ${{ steps.src.outputs.root }}
         shell: bash
         run: |
@@ -187,13 +187,13 @@ jobs:
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
           APK="$(find app/build/outputs/apk/debug -name '*.apk' | sort | head -1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk"
-          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" >/dev/null
+          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk"
+          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" >/dev/null
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R561.txt"
-          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R561.txt"
-          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4100' versionName='4.1.0'" "$GITHUB_WORKSPACE/APK_BADGING_R561.txt"
-          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R562.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R562.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4100' versionName='4.1.0'" "$GITHUB_WORKSPACE/APK_BADGING_R562.txt"
+          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk.sha256"
 
       - name: Enable KVM
         shell: bash
@@ -215,46 +215,99 @@ jobs:
             set -eu
             adb shell wm size 1440x3088
             adb shell wm density 560
-            adb install -r BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk
+            adb install -r BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk
             adb shell am force-stop com.braseiro.cyberpunkred
             adb shell am start -W -n com.braseiro.cyberpunkred/.MainActivity
             sleep 18
             adb shell pidof com.braseiro.cyberpunkred
 
             adb shell uiautomator dump /sdcard/session.xml >/dev/null || true
-            adb pull /sdcard/session.xml R5_61_SESSION_UI.xml >/dev/null || true
-            test ! -f R5_61_SESSION_UI.xml || ! grep -q "INTERFACE NÃO INICIALIZOU" R5_61_SESSION_UI.xml
-            test ! -f R5_61_SESSION_UI.xml || ! grep -q "Invalid or unexpected token" R5_61_SESSION_UI.xml
-            adb exec-out screencap -p > R5_61_SESSION_ANDROID.png
+            adb pull /sdcard/session.xml R5_62_SESSION_UI.xml >/dev/null || true
+            test ! -f R5_62_SESSION_UI.xml || ! grep -q "INTERFACE NÃO INICIALIZOU" R5_62_SESSION_UI.xml
+            test ! -f R5_62_SESSION_UI.xml || ! grep -q "Invalid or unexpected token" R5_62_SESSION_UI.xml
+            adb exec-out screencap -p > R5_62_SESSION_ANDROID.png
 
             # Mundo
             adb shell input tap 430 2940
             sleep 5
-            adb exec-out screencap -p > R5_61_WORLD_ANDROID.png
+            adb exec-out screencap -p > R5_62_WORLD_ANDROID.png
 
             # Mapa
             adb shell input tap 720 2940
             sleep 6
-            adb exec-out screencap -p > R5_61_MAP_ANDROID.png
+            adb exec-out screencap -p > R5_62_MAP_ANDROID.png
 
             # Ficha
             adb shell input tap 1010 2940
             sleep 5
-            adb exec-out screencap -p > R5_61_SHEET_ANDROID.png
+            adb exec-out screencap -p > R5_62_SHEET_ANDROID.png
 
             # Mais
             adb shell input tap 1295 2940
             sleep 4
-            adb exec-out screencap -p > R5_61_MORE_ANDROID.png
+            adb exec-out screencap -p > R5_62_MORE_ANDROID.png
 
-            for f in R5_61_SESSION_ANDROID.png R5_61_WORLD_ANDROID.png R5_61_MAP_ANDROID.png R5_61_SHEET_ANDROID.png R5_61_MORE_ANDROID.png; do test -s "$f"; done
+            for f in R5_62_SESSION_ANDROID.png R5_62_WORLD_ANDROID.png R5_62_MAP_ANDROID.png R5_62_SHEET_ANDROID.png R5_62_MORE_ANDROID.png; do test -s "$f"; done
 
-            adb logcat -d -t 1500 > R5_61_LOGCAT.txt
-            ! grep -q "Invalid or unexpected token" R5_61_LOGCAT.txt
-            ! grep -q "\[CPRED_BOOT\]" R5_61_LOGCAT.txt
-            ! grep -q "FATAL EXCEPTION" R5_61_LOGCAT.txt
+            adb logcat -d -t 1500 > R5_62_LOGCAT.txt
+            ! grep -q "Invalid or unexpected token" R5_62_LOGCAT.txt
+            ! grep -q "\[CPRED_BOOT\]" R5_62_LOGCAT.txt
+            ! grep -q "FATAL EXCEPTION" R5_62_LOGCAT.txt
 
-      - name: Package R5.61 checkpoint
+      - name: Build visual overlay and diff review
+        shell: bash
+        env:
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pillow
+          python3 - "$ROOT" <<'PY'
+          from PIL import Image,ImageChops,ImageDraw,ImageFont,ImageStat
+          import pathlib,sys,math
+          root=pathlib.Path(sys.argv[1])
+          refs=root/'visual_reference'
+          pairs=[
+            ('SESSÃO',refs/'home.png',pathlib.Path('R5_62_SESSION_ANDROID.png')),
+            ('FICHA',refs/'sheet.png',pathlib.Path('R5_62_SHEET_ANDROID.png')),
+            ('MAPA',refs/'map.png',pathlib.Path('R5_62_MAP_ANDROID.png')),
+            ('MAIS',refs/'menu.png',pathlib.Path('R5_62_MORE_ANDROID.png')),
+          ]
+          rows=[]
+          metrics=[]
+          for label,refp,actp in pairs:
+              ref=Image.open(refp).convert('RGB')
+              act=Image.open(actp).convert('RGB').resize(ref.size,Image.Resampling.LANCZOS)
+              # Target and actual are not expected to have identical content; this is a visual-review diff.
+              diff=ImageChops.difference(ref,act)
+              stat=ImageStat.Stat(diff)
+              rmse=math.sqrt(sum(v*v for v in stat.rms)/3)
+              metrics.append((label,rmse))
+              row=Image.new('RGB',(ref.width*3,ref.height+30),(2,7,10))
+              row.paste(ref,(0,30));row.paste(act,(ref.width,30));row.paste(diff,(ref.width*2,30))
+              d=ImageDraw.Draw(row)
+              d.text((6,8),f'{label}  TARGET',fill=(255,40,65))
+              d.text((ref.width+6,8),'ANDROID ACTUAL',fill=(0,217,255))
+              d.text((ref.width*2+6,8),f'DIFF  RMSE {rmse:.1f}',fill=(230,235,238))
+              rows.append(row)
+          canvas=Image.new('RGB',(max(r.width for r in rows),sum(r.height for r in rows)),(2,7,10))
+          y=0
+          for r in rows:
+              canvas.paste(r,(0,y));y+=r.height
+          canvas.save('R5_62_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png')
+          pathlib.Path('R5_62_VISUAL_METRICS.txt').write_text('\n'.join(f'{k}_RMSE={v:.3f}' for k,v in metrics)+'\n',encoding='utf-8')
+
+          # Explicit anti-regression gate: hot-pink filled-button language must not dominate the new UI.
+          actual=Image.open('R5_62_SESSION_ANDROID.png').convert('RGB')
+          pix=list(actual.resize((360,772),Image.Resampling.BILINEAR).getdata())
+          hot=sum(1 for r,g,b in pix if r>190 and b>105 and g<125)
+          ratio=hot/max(1,len(pix))
+          pathlib.Path('R5_62_PALETTE_GATE.txt').write_text(f'hot_pink_ratio={ratio:.6f}\nthreshold=0.035000\n',encoding='utf-8')
+          if ratio>0.035:
+              raise SystemExit(f'HOT_PINK_REGRESSION ratio={ratio:.4f}')
+          print('VISUAL_REVIEW_READY',metrics,'hot_pink_ratio',ratio)
+          PY
+
+      - name: Package R5.62 checkpoint
         shell: bash
         env:
           PROJECT: ${{ steps.src.outputs.project }}
@@ -263,8 +316,8 @@ jobs:
           set -euo pipefail
           rm -f "$ROOT/app/src/main/assets/web/app/preview_nojs.html"
           mkdir -p "$PROJECT/project_docs"
-          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY.md" <<'EOF'
-          # Cyberpunk RED R5.61 — Concept Authority
+          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_62_CONCEPT_AUTHORITY.md" <<'EOF'
+          # Cyberpunk RED R5.62 — Concept Pixelmatch
           Persistent bottom navigation: SESSÃO | MUNDO | MAPA | FICHA | MAIS.
           Session order: Mundo Vivo -> NPCs presentes -> imagem da cena -> Mestre -> estado contextual -> ações sugeridas -> ação livre -> imagem/TTS/Biblioteca.
           Mundo Vivo is a dedicated screen.
@@ -279,34 +332,37 @@ jobs:
           Android version: 4.1.0 / 4100.
           EOF
           rm -rf "$ROOT/.gradle" "$ROOT/build" "$ROOT/app/build"
-          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip"
+          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_62_CONCEPT_PIXELMATCH_CHECKPOINT.zip"
           PARENT="$(dirname "$PROJECT")";NAME="$(basename "$PROJECT")"
           (cd "$PARENT" && zip -qr "$OUT" "$NAME")
-          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_61_ZIP_INTEGRITY.txt"
-          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip.sha256"
-          sha256sum R5_61_SESSION_ANDROID.png R5_61_WORLD_ANDROID.png R5_61_MAP_ANDROID.png R5_61_SHEET_ANDROID.png R5_61_MORE_ANDROID.png > R5_61_SCREENSHOTS.sha256
+          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_62_ZIP_INTEGRITY.txt"
+          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_62_CONCEPT_PIXELMATCH_CHECKPOINT.zip.sha256"
+          sha256sum R5_62_SESSION_ANDROID.png R5_62_WORLD_ANDROID.png R5_62_MAP_ANDROID.png R5_62_SHEET_ANDROID.png R5_62_MORE_ANDROID.png > R5_62_SCREENSHOTS.sha256
 
-      - name: Upload R5.61 verified artifact
+      - name: Upload R5.62 verified artifact
         id: artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cyberpunk-red-r5.61-concept-authority
+          name: cyberpunk-red-r5.62-concept-pixelmatch
           path: |
-            BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk
-            BRASEIRO-CYBERPUNK-RED-R5.61-DEBUG.apk.sha256
-            APK_BADGING_R561.txt
-            APK_SIGNATURE_R561.txt
-            CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip
-            CYBERPUNK_RED_R5_61_CONCEPT_AUTHORITY_CHECKPOINT.zip.sha256
-            R5_61_ZIP_INTEGRITY.txt
-            R5_61_SESSION_ANDROID.png
-            R5_61_WORLD_ANDROID.png
-            R5_61_MAP_ANDROID.png
-            R5_61_SHEET_ANDROID.png
-            R5_61_MORE_ANDROID.png
-            R5_61_SCREENSHOTS.sha256
-            R5_61_LOGCAT.txt
-            R5_61_SESSION_UI.xml
+            BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk
+            BRASEIRO-CYBERPUNK-RED-R5.62-DEBUG.apk.sha256
+            APK_BADGING_R562.txt
+            APK_SIGNATURE_R562.txt
+            CYBERPUNK_RED_R5_62_CONCEPT_PIXELMATCH_CHECKPOINT.zip
+            CYBERPUNK_RED_R5_62_CONCEPT_PIXELMATCH_CHECKPOINT.zip.sha256
+            R5_62_ZIP_INTEGRITY.txt
+            R5_62_SESSION_ANDROID.png
+            R5_62_WORLD_ANDROID.png
+            R5_62_MAP_ANDROID.png
+            R5_62_SHEET_ANDROID.png
+            R5_62_MORE_ANDROID.png
+            R5_62_SCREENSHOTS.sha256
+            R5_62_LOGCAT.txt
+            R5_62_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png
+            R5_62_VISUAL_METRICS.txt
+            R5_62_PALETTE_GATE.txt
+            R5_62_SESSION_UI.xml
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -315,4 +371,4 @@ jobs:
         shell: bash
         run: |
           echo "RELEASE_BLOCKED_BY_USER_VISUAL_GATE=1"
-          echo "R5.61 remains workflow artifact only until concept overlay/diff is approved."
+          echo "No GitHub Release will be created. Review R5_62_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png first."
