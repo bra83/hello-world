@@ -1,5 +1,5 @@
 name: Forbidden Lands 3.3.4 Runtime Fix Build
-# source-exports-fix: 2026-09-20
+# final-runtime-source: 2026-09-20
 
 on:
   push:
@@ -12,11 +12,11 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA256: "29c4f4204ec68c4a1999e37eda946f92658af5ca3ad0da7363187a035b4e5f7a"
-  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.4_RUNTIME_FIX_CHOICES_GEMINI_SHARE_ANDROID_STUDIO_FIXED.zip"
+  SOURCE_SHA256: "a5d546d3269f1dd0bde0255de7ea412e7ce76d3aed4f7df1ccc0bff1c31b9195"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.4_RUNTIME_FIX_FINAL_ANDROID_STUDIO.zip"
   FIRE_API: "https://api.firestorage.ai/dev/file"
-  SHARE_ID: "FInzsc7fUZSw"
-  FILE_ID: "01a0bdb909b97739be4dca6dc5b32334"
+  SHARE_ID: "-VyFrzFDzzz9"
+  FILE_ID: "01a0bdbd1a6f75ad84ec69755869473f"
   RELEASE_TAG: "forbidden-lands-3.3.4-runtime-fix"
   APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.4.apk"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
@@ -197,6 +197,6 @@ jobs:
         run: |
           set -euo pipefail
           gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
-          gh release create "$RELEASE_TAG"             --target "$GITHUB_SHA"             --title "Forbidden Lands 3.3.4 — Runtime Fix"             --notes "Fixes: adventure start never waits for Gemini Vision and has a 22s playable fallback; three predefined choices are rendered; image button opens the Gemini app with the prompt and Forbidden Lands accepts shared images; Gemini TTS uses short chunks/short timeout and continues with Android from the failed chunk."
+          gh release create "$RELEASE_TAG"             --target "$GITHUB_SHA"             --title "Forbidden Lands 3.3.4 — Runtime Fix"             --notes "Fixes: adventure start never waits for Gemini Vision, caps key/world preparation and has a 22s playable fallback; three predefined choices are rendered; image button opens the Gemini app with the prompt and Forbidden Lands accepts shared images even after cold start; Gemini TTS tries the configured model plus a second supported TTS model with short timeouts, then continues on Android; autoplay is restored for users who never explicitly disabled it."
 
           gh release upload "$RELEASE_TAG"             "$APK_NAME" "$APK_NAME.sha256"             APK_ZIP_TEST.txt APK_BADGING.txt APK_SIGNATURE.txt             GRADLE_VERSION.txt GRADLE_PROJECTS.txt GRADLE_RESOURCES.txt GRADLE_COMPILE.txt GRADLE_ASSEMBLE.txt             FORBIDDEN_LANDS_3.3.4_ANDROID.png FORBIDDEN_LANDS_3.3.4_LOGCAT.txt SOURCE_ZIP_INTEGRITY.txt
