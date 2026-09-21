@@ -1,7 +1,7 @@
 name: Forbidden Lands 3.3.7 Runtime Architecture Fix
 # baseline-ts-errors-bypassed: 2026-09-21
 # trigger-focused-build: 2
-# screenshot-first-launch-gate: 1
+# screenshot-first-launch-gate: 2
 
 on:
   push:
@@ -197,18 +197,7 @@ jobs:
             adb logcat -d -t 1200 > FORBIDDEN_LANDS_3.3.7_LOGCAT.txt
             ! grep -q "FATAL EXCEPTION" FORBIDDEN_LANDS_3.3.7_LOGCAT.txt
             python3 -m pip install --quiet pillow
-            python3 - <<'PY'
-            from PIL import Image
-            im=Image.open('FORBIDDEN_LANDS_3.3.7_FIRST_LAUNCH.png').convert('RGB')
-            w,h=im.size
-            crop=im.crop((int(w*.05), int(h*.12), int(w*.95), int(h*.90)))
-            px=list(crop.getdata())
-            bright=sum(1 for r,g,b in px if (0.2126*r+0.7152*g+0.0722*b) > 30)
-            ratio=bright/max(1,len(px))
-            print(f'central_non_dark_ratio={ratio:.6f}')
-            if ratio < 0.01:
-                raise SystemExit('First launch is effectively blank/dark in the central viewport')
-            PY
+            python3 -c "from PIL import Image; im=Image.open('FORBIDDEN_LANDS_3.3.7_FIRST_LAUNCH.png').convert('RGB'); w,h=im.size; crop=im.crop((int(w*.05),int(h*.12),int(w*.95),int(h*.90))); px=list(crop.getdata()); bright=sum(1 for r,g,b in px if (0.2126*r+0.7152*g+0.0722*b)>30); ratio=bright/max(1,len(px)); print('central_non_dark_ratio=%.6f'%ratio); (_ for _ in ()).throw(SystemExit('First launch is effectively blank/dark in the central viewport')) if ratio<0.01 else None"
 
       - name: Upload validated APK and evidence
         uses: actions/upload-artifact@v4
