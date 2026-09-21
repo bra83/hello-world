@@ -32,9 +32,22 @@ jobs:
           set -euo pipefail
           rm -rf out
           mkdir -p out
-          for name in             "$APK_NAME"             "$APK_NAME.sha256"             "$ZIP_NAME"             "$ZIP_NAME.sha256"             "GRADLE_BUILD.log"             "OFFLINE_BUILD.log"             "VALIDACAO_OUA_4.9.8.txt"
-          do
-            curl -fL --retry 5 --retry-delay 2 --retry-all-errors               -o "out/$name" "$SOURCE_BASE/$name"
+          declare -A ASSETS=(
+            ["$APK_NAME"]="578577324"
+            ["$APK_NAME.sha256"]="578577615"
+            ["GRADLE_BUILD.log"]="578577638"
+            ["OFFLINE_BUILD.log"]="578577671"
+            ["$ZIP_NAME"]="578577704"
+            ["$ZIP_NAME.sha256"]="578578183"
+            ["VALIDACAO_OUA_4.9.8.txt"]="578578205"
+          )
+          for name in "${!ASSETS[@]}"; do
+            id="${ASSETS[$name]}"
+            curl -fL --retry 5 --retry-delay 2 --retry-all-errors \
+              -H "Accept: application/octet-stream" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -H "User-Agent: oua-498-mirror" \
+              -o "out/$name" "https://api.github.com/repos/bra83/braseirobuild/releases/assets/$id"
           done
 
           echo "$APK_SHA256  out/$APK_NAME" | sha256sum -c -
