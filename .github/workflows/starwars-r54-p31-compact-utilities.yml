@@ -1,0 +1,199 @@
+name: Star Wars Edge R54 P31 Compact Utilities
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/starwars-r54-p31-compact-utilities.yml"
+      - "starwars-p31-worker/patch_starwars_p31.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_URL: "https://github.com/bra83/hello-world/releases/download/star-wars-edge-r54-p30-s23-ui-fix/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P30_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "bfe1bb2e2a88c855b3f4f5f1b6e3e2880053c9b1b9c4601dd99271ddb0446e52"
+  APK_NAME: "BRASEIRO_STAR_WARS_EDGE_R54_P31_DEBUG.apk"
+  SOURCE_ZIP_NAME: "STAR_WARS_EDGE_OF_THE_GALAXY_R54_P31_ANDROID_STUDIO.zip"
+  RELEASE_TAG: "star-wars-edge-r54-p31-compact-utilities"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact P30 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work out
+          curl -fL --retry 4 --retry-delay 2 -o incoming/source.zip "$SOURCE_URL"
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          unzip -t incoming/source.zip >/dev/null
+          unzip -q incoming/source.zip -d work
+          test -f work/android/gradlew
+
+      - name: Apply P31 correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 starwars-p31-worker/patch_starwars_p31.py work/android
+          node --check work/android/app/src/main/assets/vtt/r54-device-p31.js
+          grep -Fq 'window.__R54P31OpenWorld=openWorld' work/android/app/src/main/assets/vtt/r54-device-p31.js
+          grep -Fq 'window.__R54P31OpenDice=openDice' work/android/app/src/main/assets/vtt/r54-device-p31.js
+          grep -Fq 'bottom:0!important' work/android/app/src/main/assets/vtt/r54-device-p31.js
+          grep -Fq 'opacity:.68!important' work/android/app/src/main/assets/vtt/r54-device-p31.js
+          grep -Fq 'r54-device-p31.js' work/android/app/src/main/assets/vtt/r46-shell.html
+
+      - name: Browser regression for UI placement and Mundo Vivo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet playwright
+          python3 -m playwright install chromium >/dev/null
+          cd work/android/app/src/main/assets/vtt
+          python3 -m http.server 8765 >/tmp/p31-http.log 2>&1 &
+          SERVER=$!
+          cd "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          from playwright.sync_api import sync_playwright
+          base='http://127.0.0.1:8765/r46-shell.html'
+          init="""(()=>{
+            const state={scene:{locationName:'Coruscant'},world:{sandbox:{currentLocationName:'Coruscant',currentMapPoint:{x:53.4,y:51.2}},locations:[{name:'Coruscant',description:'Mundo central'}],npcs:[{name:'Bren Tal',role:'Contato'}],factions:[{name:'Guilda local'}],rumors:[{name:'Rumor de teste'}],events:[{name:'Consequência persistente'}]}};
+            window.BraseiroGameBridge={readState:()=>JSON.stringify({ok:true,data:state}),resolveCheck:()=>JSON.stringify({ok:true,data:{netSuccess:1,netAdvantage:0,triumph:0,despair:0}})};
+          })();"""
+          with sync_playwright() as p:
+              b=p.chromium.launch(headless=True)
+              pg=b.new_page(viewport={'width':415,'height':915})
+              errs=[];pg.on('pageerror',lambda e:errs.append(str(e)))
+              pg.add_init_script(init)
+              pg.goto(base+'?screen=16',wait_until='networkidle',timeout=120000)
+              pg.wait_for_timeout(1200)
+
+              # Bottom nav must sit exactly on viewport bottom and be uniform.
+              nav=pg.locator('.bottom-navigation')
+              assert nav.count()==1
+              box=nav.bounding_box(); assert box, 'nav has no box'
+              assert abs((box['y']+box['height'])-915)<=2, box
+              assert 70<=box['height']<=76, box
+
+              # Large standalone launchers must not consume content space.
+              for sel in ('.r54-p6-world-open','.r54-p6-dice-fab','.r53-dice-fab','.r54-p1-world-open'):
+                  for i in range(pg.locator(sel).count()):
+                      assert pg.locator(sel).nth(i).evaluate("e=>getComputedStyle(e).display")=='none',sel
+
+              # Map marker stays small and readable after zoom.
+              marker=pg.locator('.r54-p1-you')
+              assert marker.count()==1
+              pg.wait_for_timeout(300)
+              m1=marker.bounding_box(); assert m1 and m1['width']<=12.5,m1
+              pg.locator('.r54-p1-world-map [data-zin]').click()
+              pg.locator('.r54-p1-world-map [data-zin]').click()
+              pg.wait_for_timeout(250)
+              m2=marker.bounding_box(); assert m2 and m2['width']<=12.5,m2
+
+              # Hamburger drawer now owns working Mundo Vivo and Dados.
+              pg.locator('.top-bar-menu').click()
+              pg.wait_for_timeout(150)
+              sheet=pg.locator('.bottom-sheet')
+              assert sheet.count()==1
+              world=sheet.locator('[data-p31-utility="world"]')
+              dice=sheet.locator('[data-p31-utility="dice"]')
+              assert world.count()==1 and dice.count()==1
+              world.click();pg.wait_for_timeout(120)
+              modal=pg.locator('.r54-p31-world-modal')
+              assert modal.count()==1
+              txt=modal.inner_text()
+              assert 'Bren Tal' in txt and 'Mundo Vivo' in txt,txt[:500]
+              assert not errs,errs
+              pg.screenshot(path='out/P31_BROWSER_MAP.png',full_page=True)
+              b.close()
+          print('P31_BROWSER_GATE=PASS nav_bottom=1 marker_small=1 standalone=0 world_opens=1 utilities_in_drawer=1')
+          PY
+          kill "$SERVER" || true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile and validate P31 APK
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/out/GRADLE_BUILD_P31.log"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/out/$APK_NAME"
+          unzip -t "$GITHUB_WORKSPACE/out/$APK_NAME" >/dev/null
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_BADGING_P31.txt"
+          grep -q "package: name='com.braseiro.starwarsedge'" "$GITHUB_WORKSPACE/out/APK_BADGING_P31.txt"
+          grep -q "versionCode='10004'" "$GITHUB_WORKSPACE/out/APK_BADGING_P31.txt"
+          grep -q "versionName='1.0.4'" "$GITHUB_WORKSPACE/out/APK_BADGING_P31.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE_P31.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
+
+      - name: Android launch smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell wm size 1440x3088
+            adb shell wm density 560
+            adb install -r out/BRASEIRO_STAR_WARS_EDGE_R54_P31_DEBUG.apk
+            adb shell am force-stop com.braseiro.starwarsedge
+            adb shell am start -W -n com.braseiro.starwarsedge/.MainActivity
+            sleep 12
+            adb shell pidof com.braseiro.starwarsedge
+            adb exec-out screencap -p > out/P31_ANDROID_LAUNCH.png
+            test -s out/P31_ANDROID_LAUNCH.png
+            adb logcat -d -t 600 > out/P31_LOGCAT.txt 2>&1 || true
+            if grep -q "FATAL EXCEPTION" out/P31_LOGCAT.txt; then exit 1; fi
+
+      - name: Package Android Studio source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/android/.gradle work/android/build work/android/app/build
+          (cd work && zip -qr "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" android)
+          unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/P31_SOURCE_ZIP_INTEGRITY.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
+
+      - name: Publish P31 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO Star Wars Edge R54 P31 — Compact Utilities"             --notes "P31 addresses the latest S23 Ultra UI report. MUNDO VIVO and DADOS no longer occupy permanent screen space; both are moved into the existing hamburger Utilidades drawer. Mundo Vivo no longer waits on the visual-index fetch before opening and reads the current persisted campaign state synchronously. Bottom navigation is normalized to the real WebView bottom on every route. The galactic current-position marker is reduced, translucent, has no text label, and inversely scales so zooming the map does not enlarge it. P30 native system-bar containment, diagnostics, high-resolution galaxy map, P29 scene image flow and narration behavior are preserved."
+          gh release upload "$RELEASE_TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING_P31.txt             out/APK_SIGNATURE_P31.txt             out/GRADLE_BUILD_P31.log             out/P31_SOURCE_ZIP_INTEGRITY.txt             out/P31_BROWSER_MAP.png
+          if [ -f out/P31_ANDROID_LAUNCH.png ]; then gh release upload "$RELEASE_TAG" out/P31_ANDROID_LAUNCH.png; fi
+          if [ -f out/P31_LOGCAT.txt ]; then gh release upload "$RELEASE_TAG" out/P31_LOGCAT.txt; fi
