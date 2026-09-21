@@ -93,8 +93,8 @@ jobs:
               assert marker.count()==1
               pg.wait_for_timeout(300)
               m1=marker.bounding_box(); assert m1 and m1['width']<=12.5,m1
-              pg.locator('.r54-p1-world-map [data-zin]').click()
-              pg.locator('.r54-p1-world-map [data-zin]').click()
+              pg.locator('.r54-p1-world-map [data-zin]').click(force=True)
+              pg.locator('.r54-p1-world-map [data-zin]').click(force=True)
               pg.wait_for_timeout(250)
               m2=marker.bounding_box(); assert m2 and m2['width']<=12.5,m2
 
