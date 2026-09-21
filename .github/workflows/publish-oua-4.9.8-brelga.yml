@@ -1,0 +1,70 @@
+name: Publish OUA 4.9.8 BRELGA outputs
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/publish-oua-4.9.8-brelga.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_BASE: "https://github.com/bra83/braseirobuild/releases/download/OUA-v4.9.8"
+  RELEASE_TAG: "oua-4.9.8-scene-entities-gemini"
+  APK_NAME: "BRASEIRO_O_UM_ANEL_4.9.8_DEBUG.apk"
+  APK_SHA256: "3e15d620fc4555c668abef095b1751288c0c92b04153f1bef63022145784dccb"
+  ZIP_NAME: "OUA_4.9.8_SCENE_ENTITIES_GEMINI_ANDROID_STUDIO.zip"
+  ZIP_SHA256: "72e6e928ca2132761a1b920e49619a74a226dc4da0704b80cdacedde916c2092"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact BRELGA outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf out
+          mkdir -p out
+          for name in             "$APK_NAME"             "$APK_NAME.sha256"             "$ZIP_NAME"             "$ZIP_NAME.sha256"             "GRADLE_BUILD.log"             "OFFLINE_BUILD.log"             "VALIDACAO_OUA_4.9.8.txt"
+          do
+            curl -fL --retry 5 --retry-delay 2 --retry-all-errors               -o "out/$name" "$SOURCE_BASE/$name"
+          done
+
+          echo "$APK_SHA256  out/$APK_NAME" | sha256sum -c -
+          echo "$ZIP_SHA256  out/$ZIP_NAME" | sha256sum -c -
+          unzip -t "out/$APK_NAME" > out/APK_ZIP_TEST.txt
+          unzip -t "out/$ZIP_NAME" > out/SOURCE_ZIP_INTEGRITY.txt
+          grep -q "PASS - scene-16x9" out/VALIDACAO_OUA_4.9.8.txt
+          grep -q "PASS - npc-stable-token" out/VALIDACAO_OUA_4.9.8.txt
+          grep -q "PASS - npc-sync" out/VALIDACAO_OUA_4.9.8.txt
+          grep -q "PASS - gemini-package" out/VALIDACAO_OUA_4.9.8.txt
+
+      - name: Validate APK metadata and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -n "$BT"
+          "$BT/aapt" dump badging "out/$APK_NAME" | tee out/APK_BADGING.txt
+          grep -q "package: name='com.braseiro.oumanel'" out/APK_BADGING.txt
+          grep -q "versionCode='49008'" out/APK_BADGING.txt
+          grep -q "versionName='4.9.8'" out/APK_BADGING.txt
+          "$BT/apksigner" verify --verbose --print-certs "out/$APK_NAME" | tee out/APK_SIGNATURE.txt
+
+      - name: Publish hello-world release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO O Um Anel 4.9.8 — Scene Entities + Gemini"             --notes "Compiled on the BRELGA self-hosted Windows x64 runner. Adds 16:9 scene illustrations above Master narration, persistent scene prompts, direct Gemini prompt sharing with share-back image import, canonical NPC-presence synchronization, persistent unique NPC portraits by npcId, manual regeneration, and preserves the 4.9.7 contextual POI overlay. This hello-world release mirrors the exact self-hosted outputs after SHA-256, APK metadata, signature, APK ZIP and source ZIP validation."
+          gh release upload "$RELEASE_TAG" out/*
