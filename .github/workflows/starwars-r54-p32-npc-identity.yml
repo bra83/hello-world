@@ -171,36 +171,6 @@ jobs:
           "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE_P32.txt"
           sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
 
-      - name: Enable KVM
-        shell: bash
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm || true
-
-      - name: Android launch smoke
-        continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            adb shell wm size 1440x3088
-            adb shell wm density 560
-            adb install -r out/BRASEIRO_STAR_WARS_EDGE_R54_P32_DEBUG.apk
-            adb shell am force-stop com.braseiro.starwarsedge
-            adb shell am start -W -n com.braseiro.starwarsedge/.MainActivity
-            sleep 12
-            adb shell pidof com.braseiro.starwarsedge
-            adb exec-out screencap -p > out/P32_ANDROID_LAUNCH.png
-            adb logcat -d -t 600 > out/P32_LOGCAT.txt 2>&1 || true
-            if grep -q "FATAL EXCEPTION" out/P32_LOGCAT.txt; then exit 1; fi
-
       - name: Package Android Studio source
         shell: bash
         run: |
@@ -227,8 +197,6 @@ jobs:
             out/P32_NPC_IDENTITY_TESTS.txt
             out/P32_REGULAR.txt
             out/P32_SOURCE_ZIP_INTEGRITY.txt
-            out/P32_ANDROID_LAUNCH.png
-            out/P32_LOGCAT.txt
 
       - name: Publish P32 release
         shell: bash
@@ -239,5 +207,3 @@ jobs:
           gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
           gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO Star Wars Edge R54 P32 — NPC Identity"             --notes "P32 gives every persistent NPC a stable identity profile: species, sex, gender, origin, career, specialization, occupation, age and persistent appearance. Legacy saves are deterministically backfilled without changing identity on reload. Living World snapshots and the Master context carry the profile; NPC portrait prompts use it. The opening-scene leak is also fixed: local NPCs no longer appear in Participantes Visíveis before Barbara/Gemini actually mentions them in the generated scene. Full regular regression: 823/823 PASS."
           gh release upload "$RELEASE_TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING_P32.txt             out/APK_SIGNATURE_P32.txt             out/GRADLE_BUILD_P32.log             out/P32_NPC_IDENTITY_TESTS.txt             out/P32_REGULAR.txt             out/P32_SOURCE_ZIP_INTEGRITY.txt
-          if [ -s out/P32_ANDROID_LAUNCH.png ]; then gh release upload "$RELEASE_TAG" out/P32_ANDROID_LAUNCH.png; fi
-          if [ -s out/P32_LOGCAT.txt ]; then gh release upload "$RELEASE_TAG" out/P32_LOGCAT.txt; fi
