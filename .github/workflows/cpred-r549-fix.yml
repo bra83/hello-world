@@ -302,9 +302,44 @@ jobs:
           hot=sum(1 for r,g,b in pix if r>190 and b>105 and g<125)
           ratio=hot/max(1,len(pix))
           pathlib.Path('R5_62_PALETTE_GATE.txt').write_text(f'hot_pink_ratio={ratio:.6f}\nthreshold=0.035000\n',encoding='utf-8')
-          if ratio>0.035:
-              raise SystemExit(f'HOT_PINK_REGRESSION ratio={ratio:.4f}')
           print('VISUAL_REVIEW_READY',metrics,'hot_pink_ratio',ratio)
+          PY
+
+      - name: Upload R5.62 visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberpunk-red-r5.62-visual-review
+          path: |
+            R5_62_SESSION_ANDROID.png
+            R5_62_WORLD_ANDROID.png
+            R5_62_MAP_ANDROID.png
+            R5_62_SHEET_ANDROID.png
+            R5_62_MORE_ANDROID.png
+            R5_62_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png
+            R5_62_VISUAL_METRICS.txt
+            R5_62_PALETTE_GATE.txt
+            R5_62_LOGCAT.txt
+            R5_62_SESSION_UI.xml
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 0
+
+      - name: Enforce concept visual gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          p=pathlib.Path('R5_62_PALETTE_GATE.txt')
+          vals={}
+          for line in p.read_text().splitlines():
+              if '=' in line:
+                  k,v=line.split('=',1); vals[k]=float(v)
+          ratio=vals['hot_pink_ratio']; threshold=vals['threshold']
+          print(f'VISUAL_GATE hot_pink_ratio={ratio:.6f} threshold={threshold:.6f}')
+          if ratio>threshold:
+              raise SystemExit(f'HOT_PINK_REGRESSION ratio={ratio:.4f}')
           PY
 
       - name: Package R5.62 checkpoint
