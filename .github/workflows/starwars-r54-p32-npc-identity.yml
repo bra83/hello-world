@@ -1,0 +1,243 @@
+name: Star Wars Edge R54 P32 NPC Identity
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/starwars-r54-p32-npc-identity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  P31_ARTIFACT_ID: "10620346830"
+  PATCH_SHARE_URL: "https://firestorage.ai/ja/f/_7sJqbSwI7Mx"
+  PATCH_SHA256: "dfc284a6ae20fdf2d217a88cd7a580fac4880183d5bcead79830339f13ecb178"
+  APK_NAME: "BRASEIRO_STAR_WARS_EDGE_R54_P32_DEBUG.apk"
+  SOURCE_ZIP_NAME: "STAR_WARS_EDGE_OF_THE_GALAXY_R54_P32_ANDROID_STUDIO.zip"
+  RELEASE_TAG: "star-wars-edge-r54-p32-npc-identity"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact P31 artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf incoming work out downloader
+          mkdir -p incoming work out downloader
+          curl -fL --retry 4 --retry-delay 2             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$P31_ARTIFACT_ID/zip"             -o incoming/p31-artifact.zip
+          unzip -t incoming/p31-artifact.zip >/dev/null
+          unzip -q incoming/p31-artifact.zip -d incoming/p31
+          test -f incoming/p31/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P31_ANDROID_STUDIO.zip
+          unzip -t incoming/p31/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P31_ANDROID_STUDIO.zip >/dev/null
+          unzip -q incoming/p31/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P31_ANDROID_STUDIO.zip -d work
+          test -f work/android/gradlew
+          test -f work/android/app/src/main/assets/vtt/js/world/world.mjs
+
+      - name: Download P32 patch bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd downloader
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.55.0
+          npx playwright install chromium
+          cat > download.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          const [url,out]=process.argv.slice(2);
+          const browser=await chromium.launch({headless:true});
+          const ctx=await browser.newContext({acceptDownloads:true,locale:'ja-JP'});
+          const page=await ctx.newPage();
+          let ok=false;
+          async function open(){await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});await page.waitForTimeout(1400)}
+          await open();
+          for(let round=0;round<20&&!ok;round++){
+            const nodes=page.locator('a,button,[role="button"],input[type="submit"]');
+            const n=Math.min(await nodes.count(),200);
+            for(let i=0;i<n;i++){
+              const e=nodes.nth(i);let meta='';
+              try{meta=((await e.innerText())+' '+(await e.getAttribute('href')||'')+' '+(await e.getAttribute('title')||'')+' '+(await e.getAttribute('aria-label')||''));}catch{}
+              if(!/download|ダウンロード|zip|ファイル|保存/i.test(meta))continue;
+              try{
+                const wait=page.waitForEvent('download',{timeout:9000});
+                await e.click({timeout:4000});
+                const d=await wait;await d.saveAs(out);ok=true;console.log('PATCH_DOWNLOAD_OK',await d.suggestedFilename());break;
+              }catch{}
+            }
+            if(!ok){await page.waitForTimeout(1000);if(round%4===3)await open()}
+          }
+          await browser.close();
+          if(!ok||!fs.existsSync(out))process.exit(2);
+          NODE
+          node download.mjs "$PATCH_SHARE_URL" "$GITHUB_WORKSPACE/incoming/p32-patch.zip"
+          cd "$GITHUB_WORKSPACE"
+          echo "$PATCH_SHA256  incoming/p32-patch.zip" | sha256sum -c -
+          unzip -t incoming/p32-patch.zip >/dev/null
+          unzip -q incoming/p32-patch.zip -d incoming/p32
+          python3 -m py_compile incoming/p32/patch_starwars_p32.py
+          python3 -m py_compile incoming/p32/patch_tests_p32.py
+
+      - name: Apply P32 NPC identity migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 incoming/p32/patch_starwars_p32.py work/android
+          cp incoming/p32/r54-p32-npc-identity.test.mjs work/android/tests/
+          python3 incoming/p32/patch_tests_p32.py work/android
+
+          node --check work/android/app/src/main/assets/vtt/js/world/world.mjs
+          node --check work/android/app/src/main/assets/vtt/js/world/sandbox.mjs
+          node --check work/android/app/src/main/assets/vtt/js/core/controller.mjs
+          node --check work/android/app/src/main/assets/vtt/js/core/uiBridge.mjs
+          node --check work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          node --check work/android/app/src/main/assets/vtt/r54-device-p31.js
+
+      - name: Rebuild canonical UI bridge
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --silent --no-save typescript@5.7.3
+          node build-ui-bridge-bundle.mjs
+          node --check app/src/main/assets/vtt/js/core/uiBridge.bundle.js
+
+      - name: Focused P32 regression
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/r54-p32-npc-identity.test.mjs | tee "$GITHUB_WORKSPACE/out/P32_NPC_IDENTITY_TESTS.txt"
+          grep -q '# tests 5' "$GITHUB_WORKSPACE/out/P32_NPC_IDENTITY_TESTS.txt"
+          grep -q '# pass 5' "$GITHUB_WORKSPACE/out/P32_NPC_IDENTITY_TESTS.txt"
+          grep -q '# fail 0' "$GITHUB_WORKSPACE/out/P32_NPC_IDENTITY_TESTS.txt"
+
+      - name: Full regular regression
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/run-node-suite.py --regular | tee "$GITHUB_WORKSPACE/out/P32_REGULAR.txt"
+          grep -q '"tests":823' "$GITHUB_WORKSPACE/out/P32_REGULAR.txt"
+          grep -q '"pass":823' "$GITHUB_WORKSPACE/out/P32_REGULAR.txt"
+          grep -q '"fail":0' "$GITHUB_WORKSPACE/out/P32_REGULAR.txt"
+          rm -rf node_modules
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile and validate P32 APK
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/out/GRADLE_BUILD_P32.log"
+
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/out/$APK_NAME"
+          unzip -t "$GITHUB_WORKSPACE/out/$APK_NAME" >/dev/null
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_BADGING_P32.txt"
+          grep -q "package: name='com.braseiro.starwarsedge'" "$GITHUB_WORKSPACE/out/APK_BADGING_P32.txt"
+          grep -q "versionCode='10005'" "$GITHUB_WORKSPACE/out/APK_BADGING_P32.txt"
+          grep -q "versionName='1.0.5'" "$GITHUB_WORKSPACE/out/APK_BADGING_P32.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE_P32.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Android launch smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell wm size 1440x3088
+            adb shell wm density 560
+            adb install -r out/BRASEIRO_STAR_WARS_EDGE_R54_P32_DEBUG.apk
+            adb shell am force-stop com.braseiro.starwarsedge
+            adb shell am start -W -n com.braseiro.starwarsedge/.MainActivity
+            sleep 12
+            adb shell pidof com.braseiro.starwarsedge
+            adb exec-out screencap -p > out/P32_ANDROID_LAUNCH.png
+            adb logcat -d -t 600 > out/P32_LOGCAT.txt 2>&1 || true
+            if grep -q "FATAL EXCEPTION" out/P32_LOGCAT.txt; then exit 1; fi
+
+      - name: Package Android Studio source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/android/.gradle work/android/build work/android/app/build
+          (cd work && zip -qr "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" android)
+          unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/P32_SOURCE_ZIP_INTEGRITY.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
+
+      - name: Upload P32 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRASEIRO_STAR_WARS_EDGE_R54_P32
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            out/BRASEIRO_STAR_WARS_EDGE_R54_P32_DEBUG.apk
+            out/BRASEIRO_STAR_WARS_EDGE_R54_P32_DEBUG.apk.sha256
+            out/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P32_ANDROID_STUDIO.zip
+            out/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P32_ANDROID_STUDIO.zip.sha256
+            out/APK_BADGING_P32.txt
+            out/APK_SIGNATURE_P32.txt
+            out/GRADLE_BUILD_P32.log
+            out/P32_NPC_IDENTITY_TESTS.txt
+            out/P32_REGULAR.txt
+            out/P32_SOURCE_ZIP_INTEGRITY.txt
+            out/P32_ANDROID_LAUNCH.png
+            out/P32_LOGCAT.txt
+
+      - name: Publish P32 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO Star Wars Edge R54 P32 — NPC Identity"             --notes "P32 gives every persistent NPC a stable identity profile: species, sex, gender, origin, career, specialization, occupation, age and persistent appearance. Legacy saves are deterministically backfilled without changing identity on reload. Living World snapshots and the Master context carry the profile; NPC portrait prompts use it. The opening-scene leak is also fixed: local NPCs no longer appear in Participantes Visíveis before Barbara/Gemini actually mentions them in the generated scene. Full regular regression: 823/823 PASS."
+          gh release upload "$RELEASE_TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING_P32.txt             out/APK_SIGNATURE_P32.txt             out/GRADLE_BUILD_P32.log             out/P32_NPC_IDENTITY_TESTS.txt             out/P32_REGULAR.txt             out/P32_SOURCE_ZIP_INTEGRITY.txt
+          if [ -s out/P32_ANDROID_LAUNCH.png ]; then gh release upload "$RELEASE_TAG" out/P32_ANDROID_LAUNCH.png; fi
+          if [ -s out/P32_LOGCAT.txt ]; then gh release upload "$RELEASE_TAG" out/P32_LOGCAT.txt; fi
