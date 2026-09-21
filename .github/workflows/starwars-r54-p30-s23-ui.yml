@@ -1,0 +1,193 @@
+name: Star Wars Edge R54 P30 S23 UI Fix
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/starwars-r54-p30-s23-ui.yml"
+      - "starwars-p30-worker/patch_starwars_p30.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_URL: "https://github.com/bra83/hello-world/releases/download/star-wars-edge-r54-p29-scene-illustration-fix/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P29_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "31252a2317d4970415997eecf7b54d4c55d9f199c46c14ad9a4454ecbf7c8989"
+  APK_NAME: "BRASEIRO_STAR_WARS_EDGE_R54_P30_DEBUG.apk"
+  SOURCE_ZIP_NAME: "STAR_WARS_EDGE_OF_THE_GALAXY_R54_P30_ANDROID_STUDIO.zip"
+  RELEASE_TAG: "star-wars-edge-r54-p30-s23-ui-fix"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact P29 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work out
+          curl -fL --retry 4 --retry-delay 2 -o incoming/source.zip "$SOURCE_URL"
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          unzip -t incoming/source.zip >/dev/null
+          unzip -q incoming/source.zip -d work
+          test -f work/android/gradlew
+
+      - name: Apply P30 correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 starwars-p30-worker/patch_starwars_p30.py work/android
+          node --check work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'FrameLayout contentRoot = new FrameLayout(this);' work/android/app/src/main/java/com/braseiro/starwarsedge/MainActivity.java
+          grep -Fq 'view.setPadding(systemInsetLeft, systemInsetTop, systemInsetRight, systemInsetBottom);' work/android/app/src/main/java/com/braseiro/starwarsedge/MainActivity.java
+          grep -Fq 'DIAGNÓSTICO REAL DO APARELHO' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'Mapa local indisponível para este local.' work/android/app/src/main/assets/vtt/r46/final-runtime.js
+          grep -Fq 'assets/maps/galaxy_map.jpg' work/android/app/src/main/assets/vtt/r54-device-p1.js
+          ! grep -Fq 'assets/maps/9752360iy2h61.png' work/android/app/src/main/assets/vtt/r54-device-p1.js
+
+      - name: Validate high resolution packaged galaxy map
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          p=Path('work/android/app/src/main/assets/vtt/assets/maps/galaxy_map.jpg')
+          assert p.is_file(),p
+          data=p.read_bytes()
+          assert data[:2]==b'\xff\xd8','not jpeg'
+          i=2; w=h=None
+          while i+9 < len(data):
+              if data[i] != 0xff:
+                  i+=1; continue
+              marker=data[i+1]; i+=2
+              if marker in (0xd8,0xd9): continue
+              if i+2>len(data): break
+              n=int.from_bytes(data[i:i+2],'big')
+              if marker in range(0xc0,0xc4):
+                  h=int.from_bytes(data[i+3:i+5],'big')
+                  w=int.from_bytes(data[i+5:i+7],'big')
+                  break
+              i+=n
+          assert w and h,(w,h)
+          assert w>=5000 and h>=3000,(w,h)
+          print('GALAXY_MAP_HIRES_PASS',w,h,p.stat().st_size)
+          PY
+
+      - name: Semantic P30 gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('work/android')
+          main=(root/'app/src/main/java/com/braseiro/starwarsedge/MainActivity.java').read_text('utf-8')
+          shell=(root/'app/src/main/assets/vtt/r46-shell.html').read_text('utf-8')
+          rt=(root/'app/src/main/assets/vtt/r46/final-runtime.js').read_text('utf-8')
+          p1=(root/'app/src/main/assets/vtt/r54-device-p1.js').read_text('utf-8')
+          assert 'FrameLayout contentRoot = new FrameLayout(this);' in main
+          assert 'view.setPadding(systemInsetLeft, systemInsetTop, systemInsetRight, systemInsetBottom);' in main
+          assert "dataset.nativeInsets='container'" in main
+          assert 'viewport-fit=cover' not in shell
+          assert 'assets/maps/galaxy_map.jpg' in p1
+          assert 'object-fit:contain!important' in p1
+          assert 'DIAGNÓSTICO REAL DO APARELHO' in rt
+          assert 'Gemini chave' in rt and 'TTS Android' in rt and 'Biblioteca PDF' in rt
+          assert 'Mapa local indisponível para este local.' in rt
+          assert "img.hidden=true;img.style.display='none'" in rt
+          print('P30_SEMANTIC_GATE=PASS native_insets=1 diagnostics=1 broken_local_map=hidden galaxy=hires')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile and validate P30 APK
+        working-directory: work/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --no-daemon --stacktrace
+          ./gradlew :app:compileDebugJavaWithJavac --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/out/GRADLE_BUILD_P30.log"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/out/$APK_NAME"
+          unzip -t "$GITHUB_WORKSPACE/out/$APK_NAME" >/dev/null
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_BADGING_P30.txt"
+          grep -q "package: name='com.braseiro.starwarsedge'" "$GITHUB_WORKSPACE/out/APK_BADGING_P30.txt"
+          grep -q "versionCode='10003'" "$GITHUB_WORKSPACE/out/APK_BADGING_P30.txt"
+          grep -q "versionName='1.0.3'" "$GITHUB_WORKSPACE/out/APK_BADGING_P30.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/out/$APK_NAME" | tee "$GITHUB_WORKSPACE/out/APK_SIGNATURE_P30.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$APK_NAME" > "$GITHUB_WORKSPACE/out/$APK_NAME.sha256"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Android S23-Ultra-like launch smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell wm size 1440x3088
+            adb shell wm density 560
+            adb install -r out/BRASEIRO_STAR_WARS_EDGE_R54_P30_DEBUG.apk
+            adb shell am force-stop com.braseiro.starwarsedge
+            adb shell am start -W -n com.braseiro.starwarsedge/.MainActivity
+            sleep 15
+            adb shell pidof com.braseiro.starwarsedge
+            adb exec-out screencap -p > out/P30_S23_PROFILE_LAUNCH.png
+            test -s out/P30_S23_PROFILE_LAUNCH.png
+            adb logcat -d -t 600 > out/P30_LOGCAT.txt 2>&1 || true
+            if grep -q "FATAL EXCEPTION" out/P30_LOGCAT.txt; then exit 1; fi
+
+      - name: Package Android Studio source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/android/.gradle work/android/build work/android/app/build
+          (cd work && zip -qr "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" android)
+          unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/P30_SOURCE_ZIP_INTEGRITY.txt"
+          sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
+
+      - name: Publish P30 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" -y --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"             --title "BRASEIRO Star Wars Edge R54 P30 — S23 UI Fix"             --notes "P30 fixes the issues reported from the physical S23 Ultra screenshots: WebView is now natively contained inside the real Android system-bar insets instead of relying only on CSS; broken local-map IMG placeholders are hidden and replaced by an explicit unavailable message; screen 30 always shows live diagnostic bridge/Gemini/TTS/library/campaign status; the galactic viewer now uses the packaged 5042x3263 galaxy_map.jpg rather than the lower-resolution 9752360 image and preserves its aspect ratio. P29 scene-illustration and narration corrections are preserved."
+          gh release upload "$RELEASE_TAG"             "out/$APK_NAME"             "out/$APK_NAME.sha256"             "out/$SOURCE_ZIP_NAME"             "out/$SOURCE_ZIP_NAME.sha256"             out/APK_BADGING_P30.txt             out/APK_SIGNATURE_P30.txt             out/GRADLE_BUILD_P30.log             out/P30_SOURCE_ZIP_INTEGRITY.txt
+          if [ -f out/P30_S23_PROFILE_LAUNCH.png ]; then gh release upload "$RELEASE_TAG" out/P30_S23_PROFILE_LAUNCH.png; fi
+          if [ -f out/P30_LOGCAT.txt ]; then gh release upload "$RELEASE_TAG" out/P30_LOGCAT.txt; fi
