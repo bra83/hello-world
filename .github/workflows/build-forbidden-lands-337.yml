@@ -166,6 +166,18 @@ jobs:
           grep -q "versionName='3.3.7'" APK_BADGING.txt
           sha256sum "$APK_NAME" > "$APK_NAME.sha256"
 
+      - name: Upload test APK before emulator smoke
+        uses: actions/upload-artifact@v4
+        with:
+          name: forbidden-lands-3.3.7-test-apk
+          compression-level: 0
+          retention-days: 7
+          path: |
+            BRASEIRO_FORBIDDEN_LANDS_3.3.7.apk
+            BRASEIRO_FORBIDDEN_LANDS_3.3.7.apk.sha256
+            APK_BADGING.txt
+            APK_SIGNATURE.txt
+
       - name: Enable KVM
         shell: bash
         run: |
