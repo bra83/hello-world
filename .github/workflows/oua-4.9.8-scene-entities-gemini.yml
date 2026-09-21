@@ -1,0 +1,285 @@
+name: OUA 4.9.8 Scene Entities Gemini - Self Hosted
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/oua-4.9.8-scene-entities-gemini.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASE_URL: "https://github.com/bra83/braseirobuild/releases/download/OUA-v4.9.5/OUA_4.9.5_MAP_PARTY_CAMPAIGN_RECOVERY_ANDROID_STUDIO.zip"
+  BASE_SHA256: "08a80cda9e2f66ba4bb4651b764a981caf8336192e726e0bd690edeb76e55745"
+  PATCH_COMMIT: "db0acded8fa5d02631319b83c4e2a0e6a35bfbe1"
+  RELEASE_TAG: "oua-4.9.8-scene-entities-gemini"
+  SOURCE_NAME: "OUA_4.9.8_SCENE_ENTITIES_GEMINI_ANDROID_STUDIO.zip"
+  APK_NAME: "BRASEIRO_O_UM_ANEL_4.9.8_DEBUG.apk"
+
+jobs:
+  build:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Prepare exact source and patches
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'BRELGA') { throw "Expected BRELGA; got $env:RUNNER_NAME" }
+
+          $python = Get-Command python.exe -ErrorAction SilentlyContinue
+          if (-not $python) { $python = Get-Command python -ErrorAction Stop }
+
+          $work = Join-Path $env:RUNNER_TEMP 'oua-498-hello-world'
+          $incoming = Join-Path $work 'incoming'
+          $extract = Join-Path $work 'extract'
+          $patches = Join-Path $work 'patches'
+          $out = Join-Path $work 'out'
+          Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $incoming,$extract,$patches,$out -Force | Out-Null
+
+          $zip = Join-Path $incoming 'base.zip'
+          & curl.exe -L --fail --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 30 -o $zip $env:BASE_URL
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zip)) { throw 'Base download failed' }
+          $baseHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($baseHash -ne $env:BASE_SHA256) { throw "Base SHA mismatch: $baseHash" }
+
+          & tar.exe -xf $zip -C $extract
+          if ($LASTEXITCODE -ne 0) { throw 'Base extraction failed' }
+
+          $pkg = Get-ChildItem $extract -Recurse -File -Filter package.json |
+            Where-Object { Test-Path (Join-Path $_.Directory.FullName 'android') } |
+            Sort-Object { $_.FullName.Length } |
+            Select-Object -First 1
+          if (-not $pkg) { throw 'O Um Anel project root not found' }
+          $root = $pkg.Directory.FullName
+
+          $rawBase = "https://raw.githubusercontent.com/bra83/braseirobuild/$env:PATCH_COMMIT"
+          $patchFiles = @(
+            'ci/oua-4.9.8/patch_core.py',
+            'ci/oua-4.9.8/patch_app.py',
+            'ci/oua-4.9.8/patch_ui.py',
+            'ci/oua-4.9.8/patch_android_version.py'
+          )
+          foreach ($rel in $patchFiles) {
+            $name = Split-Path $rel -Leaf
+            $dest = Join-Path $patches $name
+            & curl.exe -L --fail --retry 5 --retry-delay 2 --retry-all-errors --connect-timeout 30 -o $dest "$rawBase/$rel"
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $dest)) { throw "Patch download failed: $rel" }
+          }
+
+          $mapDest = Join-Path $patches 'EriadorMap.tsx'
+          & curl.exe -L --fail --retry 5 --retry-delay 2 --retry-all-errors --connect-timeout 30 -o $mapDest "$rawBase/ci/oua-4.9.7/source-snapshot/components/EriadorMap.tsx"
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $mapDest)) { throw '4.9.7 EriadorMap download failed' }
+          Copy-Item $mapDest (Join-Path $root 'components\EriadorMap.tsx') -Force
+
+          & $python.Source (Join-Path $patches 'patch_core.py') $root
+          if ($LASTEXITCODE -ne 0) { throw 'patch_core failed' }
+          & $python.Source (Join-Path $patches 'patch_app.py') $root
+          if ($LASTEXITCODE -ne 0) { throw 'patch_app failed' }
+          & $python.Source (Join-Path $patches 'patch_ui.py') $root
+          if ($LASTEXITCODE -ne 0) { throw 'patch_ui failed' }
+          & $python.Source (Join-Path $patches 'patch_android_version.py') $root
+          if ($LASTEXITCODE -ne 0) { throw 'patch_android_version failed' }
+
+          $appText = Get-Content (Join-Path $root 'App.tsx') -Raw
+          $gameText = Get-Content (Join-Path $root 'components\GameView.tsx') -Raw
+          $immText = Get-Content (Join-Path $root 'components\immersive\ImmersiveJourneyView.tsx') -Raw
+          $dbText = Get-Content (Join-Path $root 'lib\db.ts') -Raw
+          $nativeText = Get-Content (Join-Path $root 'android\app\src\main\java\com\braseiro\oumanel\MainActivity.kt') -Raw
+          $mapText = Get-Content (Join-Path $root 'components\EriadorMap.tsx') -Raw
+
+          $checks = @{
+            'scene-16x9' = $dbText.Contains("'9:16' | '16:9'")
+            'prompt-persisted' = $appText.Contains('sceneVisualPromptCreatedAt: Date.now()')
+            'npc-sync' = $appText.Contains('reconcileSceneNpcPresence')
+            'npc-stable-token' = $appText.Contains("'npc_portrait_' + safeNpcId")
+            'npc-target-routing' = $appText.Contains('handleImportNpcPortrait(dataUrl, npcTargetId)')
+            'scene-gemini' = $gameText.Contains('Gerar ilustração')
+            'npc-gemini' = $gameText.Contains('Regenerar no Gemini')
+            'immersive-entities' = $immText.Contains('NPCs presentes')
+            'gemini-package' = $nativeText.Contains('com.google.android.apps.bard')
+            'poi-overlay-497' = $mapText.Contains("right: '-5%'")
+          }
+          $validation = Join-Path $out 'VALIDACAO_OUA_4.9.8.txt'
+          foreach ($entry in $checks.GetEnumerator() | Sort-Object Name) {
+            $status = if ($entry.Value) { 'PASS' } else { 'FAIL' }
+            ($status + ' - ' + $entry.Name) | Tee-Object -FilePath $validation -Append
+          }
+          if (@($checks.GetEnumerator() | Where-Object { -not $_.Value }).Count -gt 0) { throw 'Static contract gate failed' }
+
+          "OUA_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OUA_OUT=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build web runtime
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { throw 'npm.cmd not found' }
+          if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) { throw 'node.exe not found' }
+
+          Push-Location $env:OUA_ROOT
+          try {
+            $env:npm_config_registry = 'https://registry.npmjs.org/'
+            $env:npm_config_replace_registry_host = 'always'
+            $env:npm_config_fetch_retries = '5'
+            $env:npm_config_fetch_retry_mintimeout = '2000'
+            $env:npm_config_fetch_retry_maxtimeout = '20000'
+            $ok = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              & npm.cmd ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
+              if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+              Start-Sleep -Seconds (3 * $attempt)
+            }
+            if (-not $ok) { throw 'npm ci failed after retries' }
+
+            & npm.cmd run build:offline 2>&1 | Tee-Object -FilePath (Join-Path $env:OUA_OUT 'OFFLINE_BUILD.log')
+            if ($LASTEXITCODE -ne 0) { throw 'build:offline failed' }
+            & node.exe scripts/use-offline-dist.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'use-offline-dist failed' }
+            & node.exe scripts/sync-android-assets.mjs
+            if ($LASTEXITCODE -ne 0) { throw 'sync-android-assets failed' }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Configure Android SDK
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidates = @('C:\actions-runner\android-sdk')
+          if ($env:ANDROID_SDK_ROOT) { $candidates += $env:ANDROID_SDK_ROOT }
+          if ($env:ANDROID_HOME) { $candidates += $env:ANDROID_HOME }
+          if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'Android\Sdk') }
+          $sdkRoot = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $sdkRoot) { throw 'Android SDK not found on BRELGA' }
+          $sdkmanager = Get-ChildItem $sdkRoot -Recurse -Filter sdkmanager.bat -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $sdkmanager) { throw 'sdkmanager.bat not found' }
+
+          $env:ANDROID_HOME = $sdkRoot
+          $env:ANDROID_SDK_ROOT = $sdkRoot
+          "ANDROID_HOME=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ANDROID_SDK_ROOT=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          1..100 | ForEach-Object { 'y' } | & $sdkmanager.FullName --licenses | Out-Null
+          & $sdkmanager.FullName 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK package setup failed' }
+
+      - name: Build and validate APK
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $android = Join-Path $env:OUA_ROOT 'android'
+          $gradleLog = Join-Path $env:OUA_OUT 'GRADLE_BUILD.log'
+
+          Push-Location $android
+          try {
+            & .\gradlew.bat clean :app:assembleDebug --stacktrace --no-daemon 2>&1 | Tee-Object -FilePath $gradleLog
+            if ($LASTEXITCODE -ne 0) { throw 'Gradle assembleDebug failed' }
+          } finally {
+            Pop-Location
+          }
+
+          $apk = Get-ChildItem (Join-Path $android 'app\build\outputs\apk\debug') -File -Filter '*.apk' | Select-Object -First 1
+          if (-not $apk) { throw 'Debug APK not found' }
+          $apkDest = Join-Path $env:OUA_OUT $env:APK_NAME
+          Copy-Item $apk.FullName $apkDest -Force
+
+          $buildTools = Get-ChildItem (Join-Path $env:ANDROID_HOME 'build-tools') -Directory |
+            Sort-Object { [version]($_.Name -replace '[^0-9.]','') } -Descending |
+            Select-Object -First 1
+          if (-not $buildTools) { throw 'Android build-tools not found' }
+
+          $aapt = Join-Path $buildTools.FullName 'aapt.exe'
+          $apksigner = Join-Path $buildTools.FullName 'apksigner.bat'
+          & $aapt dump badging $apkDest 2>&1 | Tee-Object -FilePath (Join-Path $env:OUA_OUT 'APK_BADGING.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'aapt validation failed' }
+
+          $badging = Get-Content (Join-Path $env:OUA_OUT 'APK_BADGING.txt') -Raw
+          if ($badging -notmatch "package: name='com\.braseiro\.oumanel'") { throw 'Wrong applicationId' }
+          if ($badging -notmatch "versionCode='49008'") { throw 'Wrong versionCode' }
+          if ($badging -notmatch "versionName='4\.9\.8'") { throw 'Wrong versionName' }
+
+          & $apksigner verify --verbose --print-certs $apkDest 2>&1 | Tee-Object -FilePath (Join-Path $env:OUA_OUT 'APK_SIGNATURE.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'APK signature validation failed' }
+
+          $apkHash = (Get-FileHash $apkDest -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$apkHash  $env:APK_NAME" | Set-Content "$apkDest.sha256" -Encoding ascii
+
+      - name: Package Android Studio source
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item (Join-Path $env:OUA_ROOT 'node_modules') -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:OUA_ROOT 'android\.gradle') -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:OUA_ROOT 'android\build') -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:OUA_ROOT 'android\app\build') -Recurse -Force -ErrorAction SilentlyContinue
+
+          $sourceZip = Join-Path $env:OUA_OUT $env:SOURCE_NAME
+          $parent = Split-Path $env:OUA_ROOT -Parent
+          $leaf = Split-Path $env:OUA_ROOT -Leaf
+          & tar.exe -a -c -f $sourceZip -C $parent $leaf
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sourceZip)) { throw 'Source ZIP creation failed' }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $test = [System.IO.Compression.ZipFile]::OpenRead($sourceZip)
+          $entries = $test.Entries.Count
+          $test.Dispose()
+          "ZIP_ENTRIES=$entries" | Set-Content (Join-Path $env:OUA_OUT 'SOURCE_ZIP_INTEGRITY.txt') -Encoding ascii
+
+          $sourceHash = (Get-FileHash $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sourceHash  $env:SOURCE_NAME" | Set-Content "$sourceZip.sha256" -Encoding ascii
+
+      - name: Publish hello-world release
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = $env:GITHUB_REPOSITORY
+          $headers = @{
+            'Authorization' = "Bearer $env:GITHUB_TOKEN"
+            'Accept' = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+            'User-Agent' = 'oua-498-self-hosted'
+          }
+
+          $tagEncoded = [uri]::EscapeDataString($env:RELEASE_TAG)
+          try {
+            $old = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases/tags/$tagEncoded"
+            if ($old.id) {
+              Invoke-RestMethod -Method Delete -Headers $headers -Uri "https://api.github.com/repos/$repo/releases/$($old.id)" | Out-Null
+            }
+          } catch {}
+
+          $payload = @{
+            tag_name = $env:RELEASE_TAG
+            target_commitish = $env:GITHUB_SHA
+            name = 'BRASEIRO O Um Anel 4.9.8 - Scene Entities + Gemini'
+            body = 'Self-hosted BRELGA build. Adds 16:9 scene illustrations above Master narration, persistent scene prompts, direct Gemini prompt sharing and share-back image import, canonical present-NPC synchronization, persistent unique NPC portraits by npcId, manual portrait regeneration, and preserves the 4.9.7 contextual POI overlay.'
+            draft = $false
+            prerelease = $false
+          } | ConvertTo-Json
+
+          $release = Invoke-RestMethod -Method Post -Headers $headers -ContentType 'application/json' -Body $payload -Uri "https://api.github.com/repos/$repo/releases"
+          if (-not $release.id) { throw 'Release creation failed' }
+
+          $files = Get-ChildItem $env:OUA_OUT -File
+          foreach ($file in $files) {
+            $encodedName = [uri]::EscapeDataString($file.Name)
+            $uploadUrl = "https://uploads.github.com/repos/$repo/releases/$($release.id)/assets?name=$encodedName"
+            & curl.exe -L --fail --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 30 --request POST -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/octet-stream" --data-binary "@$($file.FullName)" $uploadUrl
+            if ($LASTEXITCODE -ne 0) { throw "Release upload failed: $($file.Name)" }
+          }
+
+          Write-Host "RELEASE_URL=$($release.html_url)"
