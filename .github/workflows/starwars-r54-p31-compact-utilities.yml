@@ -193,7 +193,27 @@ jobs:
           unzip -t "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/P31_SOURCE_ZIP_INTEGRITY.txt"
           sha256sum "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME" > "$GITHUB_WORKSPACE/out/$SOURCE_ZIP_NAME.sha256"
 
+      - name: Upload P31 build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BRASEIRO_STAR_WARS_EDGE_R54_P31
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            out/BRASEIRO_STAR_WARS_EDGE_R54_P31_DEBUG.apk
+            out/BRASEIRO_STAR_WARS_EDGE_R54_P31_DEBUG.apk.sha256
+            out/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P31_ANDROID_STUDIO.zip
+            out/STAR_WARS_EDGE_OF_THE_GALAXY_R54_P31_ANDROID_STUDIO.zip.sha256
+            out/APK_BADGING_P31.txt
+            out/APK_SIGNATURE_P31.txt
+            out/GRADLE_BUILD_P31.log
+            out/P31_SOURCE_ZIP_INTEGRITY.txt
+            out/P31_BROWSER_MAP.png
+            out/P31_ANDROID_LAUNCH.png
+            out/P31_LOGCAT.txt
+
       - name: Publish P31 release
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
