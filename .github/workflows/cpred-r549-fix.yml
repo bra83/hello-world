@@ -99,6 +99,26 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
 
+      - name: Snapshot R5.63 runtime sources for device bugfix
+        shell: bash
+        env:
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          SNAP="$GITHUB_WORKSPACE/cyberpunk-red/r5.63-source-snapshot"
+          rm -rf "$SNAP"
+          mkdir -p "$SNAP"
+          cp "$ROOT/app/src/main/assets/web/app/index.html" "$SNAP/index.html"
+          cp "$ROOT/app/src/main/assets/web/app/app.js" "$SNAP/app.js"
+          cp "$ROOT/app/src/main/assets/web/app/sheets.js" "$SNAP/sheets.js"
+          cp "$ROOT/app/src/main/assets/web/app/interface_v2.css" "$SNAP/interface_v2.css"
+          cp "$ROOT/app/src/main/java/com/braseiro/cyberpunkred/MainActivity.kt" "$SNAP/MainActivity.kt"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$SNAP"
+          git commit -m "debug(cyberpunk): snapshot R5.63 runtime UI sources" || true
+          git push origin HEAD:master || true
+
       - name: Interface architecture gates
         shell: bash
         env:
