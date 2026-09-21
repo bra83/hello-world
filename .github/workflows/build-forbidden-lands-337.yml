@@ -1,5 +1,6 @@
 name: Forbidden Lands 3.3.7 Runtime Architecture Fix
 # baseline-ts-errors-bypassed: 2026-09-21
+# trigger-focused-build: 2
 
 on:
   push:
