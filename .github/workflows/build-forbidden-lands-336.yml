@@ -14,7 +14,7 @@ permissions:
 
 env:
   SOURCE_SHA256: "66f2c46066ecd6b717d75dceb061b315ed2f9ef6851d6cec9b4a6f9b8ab789c0"
-  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.6_START_LOCAL_CHOICES_TTS_HOTFIX_ANDROID_STUDIO.zip"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.6_ACTION_UNFREEZE_ANDROID_STUDIO.zip"
   FIRE_API: "https://api.firestorage.ai/dev/file"
   SHARE_ID: "3RwG0Rvgbarc"
   FILE_ID: "01a0c1ddb4ad76388c7a569d782dc707"
@@ -99,7 +99,7 @@ jobs:
           test -f android/app/src/main/assets/public/index.html
           grep -R -q "Ação Livre" android/app/src/main/assets/public/assets
           grep -R -q "Escolhas sugeridas" android/app/src/main/assets/public/assets
-          grep -q "3.3.6: INICIAR é 100% local" src/screens/AdventureScreenV3.tsx
+          grep -q "3.3.6: nenhuma ação mantém" src/screens/AdventureScreenV3.tsx
 
       - uses: actions/setup-java@v4
         with:
