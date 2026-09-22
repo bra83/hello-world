@@ -1,0 +1,342 @@
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "braseiro-forbidden-lands",
+   "private": true,
+-  "version": "3.3.9",
++  "version": "3.3.10",
+   "type": "module",
+   "scripts": {
+     "dev": "node node_modules/tsx/dist/cli.mjs server.ts",
+@@ -39,7 +39,8 @@
+     "verify:runtime-336": "node scripts/verify-runtime-336.mjs",
+     "verify:runtime-337": "node scripts/verify-runtime-337.mjs",
+     "verify:runtime-338": "node scripts/verify-runtime-338.mjs",
+-    "verify:runtime-339": "node scripts/verify-runtime-339.mjs"
++    "verify:runtime-339": "node scripts/verify-runtime-339.mjs",
++    "verify:runtime-3310": "node --import tsx scripts/verify-runtime-3310.mjs"
+   },
+   "dependencies": {
+     "@capacitor/android": "^8.4.2",
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "braseiro-forbidden-lands",
+-  "version": "3.3.7",
++  "version": "3.3.10",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "braseiro-forbidden-lands",
+-      "version": "3.3.7",
++      "version": "3.3.10",
+       "dependencies": {
+         "@capacitor/android": "^8.4.2",
+         "@capacitor/app": "^8.0.1",
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -20,8 +20,8 @@
+         applicationId "com.braseiro.forbiddenlands"
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+-        versionCode 303009
+-        versionName "3.3.9"
++        versionCode 303010
++        versionName "3.3.10"
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         aaptOptions {
+             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+--- a/src/version.ts
++++ b/src/version.ts
+@@ -1,4 +1,4 @@
+-export const APP_VERSION = '3.3.9';
+-export const ANDROID_VERSION_CODE = 303009;
++export const APP_VERSION = '3.3.10';
++export const ANDROID_VERSION_CODE = 303010;
+ export const DATABASE_VERSION = 12;
+ export const RELEASE_NAME = 'Motor Barbara 1.1.1, apresentação de mundo, POIs sandbox e Audio Director';
+--- a/src/services/BarbaraCore.ts
++++ b/src/services/BarbaraCore.ts
+@@ -31,7 +31,7 @@
+  */
+ export class BarbaraCore {
+   static readonly CORE_VERSION = '1.1.1';
+-  static readonly INTEGRATION_VERSION = '3.3.9';
++  static readonly INTEGRATION_VERSION = '3.3.10';
+ 
+   static band(turn: BarbaraTurn): BarbaraBand {
+     if (turn.advancesFiction === false) return 'micro';
+--- a/src/services/RulesRetrievalService.ts
++++ b/src/services/RulesRetrievalService.ts
+@@ -4,34 +4,98 @@
+ 
+ const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+ const STOP = new Set(['para', 'como', 'uma', 'uns', 'das', 'dos', 'que', 'com', 'sem', 'por', 'the', 'and', 'from', 'regra', 'regras', 'forbidden', 'lands']);
+-const terms = (value: string) => Array.from(new Set(normalize(value).split(' ').filter(term => term.length > 2 && !STOP.has(term))));
++const terms = (value: string) => Array.from(new Set(normalize(value).split(' ').filter(term => term.length > 2 && !STOP.has(term)))).slice(0, 14);
+ 
+-function selectContext(chunks: RuleChunk[], query: string, limit: number, prefix = 'ID', trustedMechanicalOnly = false) {
++/**
++ * A Biblioteca pode conter milhares de trechos. O algoritmo anterior normalizava
++ * o texto inteiro novamente para CADA termo da consulta e usava split() para
++ * contar ocorrências. Em Android isso bloqueava a thread JS/WebView justamente
++ * ao tocar numa ação sugerida, antes mesmo da chamada Gemini começar.
++ *
++ * Mantemos um cache barato por chunk e cedemos o event loop durante a varredura.
++ * Assim a busca continua completa, mas a interface, Cancelar e os deadlines
++ * continuam vivos enquanto o contexto mecânico é preparado.
++ */
++type PreparedChunk = { chunk: RuleChunk; text: string; source: string; fingerprint: string };
++const normalizedChunkCache = new Map<string, PreparedChunk>();
++const MAX_NORMALIZED_CACHE = 30_000;
++const COOPERATIVE_BATCH = 160;
++
++const fingerprint = (chunk: RuleChunk) => {
++  const raw = String(chunk.text || '');
++  return `${raw.length}:${chunk.pageNumber}:${chunk.sourceLabel || ''}:${raw.slice(0, 48)}:${raw.slice(-48)}`;
++};
++
++const prepareChunk = (chunk: RuleChunk): PreparedChunk => {
++  const key = String(chunk.id || `${chunk.documentId}:${chunk.pageNumber}`);
++  const mark = fingerprint(chunk);
++  const cached = normalizedChunkCache.get(key);
++  if (cached?.fingerprint === mark) return cached;
++  const prepared = { chunk, text: normalize(chunk.text || ''), source: normalize(chunk.sourceLabel || ''), fingerprint: mark };
++  if (normalizedChunkCache.size >= MAX_NORMALIZED_CACHE) normalizedChunkCache.clear();
++  normalizedChunkCache.set(key, prepared);
++  return prepared;
++};
++
++const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
++
++const occurrenceCount = (text: string, term: string, cap = 8) => {
++  let count = 0;
++  let offset = 0;
++  while (count < cap) {
++    const found = text.indexOf(term, offset);
++    if (found < 0) break;
++    count += 1;
++    offset = found + term.length;
++  }
++  return count;
++};
++
++async function selectContext(chunks: RuleChunk[], query: string, limit: number, prefix = 'ID', trustedMechanicalOnly = false) {
+   if (trustedMechanicalOnly) chunks = chunks.filter(chunk => ForbiddenLandsMaterialCatalogService.isTrustedMechanicalSource(chunk.sourceLabel || ''));
+   if (!query?.trim() || !chunks.length) return { chunks: [] as RuleChunk[], contextString: '' };
++
+   const queryTerms = terms(query);
++  if (!queryTerms.length) return { chunks: [] as RuleChunk[], contextString: '' };
+   const phrase = normalize(query);
+-  const documentFrequency = new Map<string, number>();
+-  for (const term of queryTerms) {
+-    documentFrequency.set(term, chunks.reduce((count, chunk) => count + (normalize(chunk.text).includes(term) ? 1 : 0), 0));
++  const prepared: PreparedChunk[] = new Array(chunks.length);
++
++  for (let index = 0; index < chunks.length; index += 1) {
++    prepared[index] = prepareChunk(chunks[index]);
++    if (index > 0 && index % COOPERATIVE_BATCH === 0) await yieldToEventLoop();
+   }
+ 
+-  const scored = chunks.map(chunk => {
+-    const text = normalize(chunk.text);
+-    let score = phrase.length > 8 && text.includes(phrase) ? 30 : 0;
++  const documentFrequency = new Map<string, number>(queryTerms.map(term => [term, 0]));
++  for (let index = 0; index < prepared.length; index += 1) {
++    const text = prepared[index].text;
++    for (const term of queryTerms) {
++      if (text.includes(term)) documentFrequency.set(term, (documentFrequency.get(term) || 0) + 1);
++    }
++    if (index > 0 && index % COOPERATIVE_BATCH === 0) await yieldToEventLoop();
++  }
++
++  const scored: Array<{ chunk: RuleChunk; score: number }> = [];
++  for (let index = 0; index < prepared.length; index += 1) {
++    const item = prepared[index];
++    let score = phrase.length > 8 && item.text.includes(phrase) ? 30 : 0;
+     let unique = 0;
+     for (const term of queryTerms) {
+-      const count = text.split(term).length - 1;
++      if (!item.text.includes(term)) continue;
++      const count = occurrenceCount(item.text, term);
+       if (!count) continue;
+       unique += 1;
+-      const idf = Math.log((chunks.length + 1) / ((documentFrequency.get(term) || 0) + 1)) + 1;
++      const idf = Math.log((prepared.length + 1) / ((documentFrequency.get(term) || 0) + 1)) + 1;
+       score += (1 + Math.log(count)) * idf * 4;
+     }
+     score += unique * unique * 1.5;
+-    if (normalize(chunk.sourceLabel || '').split(' ').some(term => queryTerms.includes(term))) score += 5;
+-    score += ForbiddenLandsMaterialCatalogService.authorityRank(chunk.sourceLabel || '') / 5;
+-    return { chunk, score };
+-  }).filter(item => item.score > 2).sort((a, b) => b.score - a.score);
++    if (item.source.split(' ').some(term => queryTerms.includes(term))) score += 5;
++    score += ForbiddenLandsMaterialCatalogService.authorityRank(item.chunk.sourceLabel || '') / 5;
++    if (score > 2) scored.push({ chunk: item.chunk, score });
++    if (index > 0 && index % COOPERATIVE_BATCH === 0) await yieldToEventLoop();
++  }
++
++  scored.sort((a, b) => b.score - a.score);
++  await yieldToEventLoop();
+ 
+   const selected: RuleChunk[] = [];
+   const perPage = new Map<string, number>();
+@@ -58,6 +122,11 @@
+   return { chunks: selected.slice(0, excerpts.length), contextString: excerpts.join('\n\n') };
+ }
+ 
++// Exportado apenas para o gate de regressão de performance da 3.3.10.
++export async function selectRuleContextForTesting(chunks: RuleChunk[], query: string, limit = 8) {
++  return selectContext(chunks, query, limit, 'TESTE');
++}
++
+ export class RulesRetrievalService {
+   static async retrieveContext(query: string, limit = 8) {
+     const chunks = await withDbRetry(db => db.getAll('rule_chunks')) as RuleChunk[];
+@@ -70,14 +139,17 @@
+   }
+ 
+   static async retrieveCampaignNotes(query: string, limit = 6) {
+-    const [documents, chunks] = await Promise.all([
+-      withDbRetry(db => db.getAll('rule_documents')) as Promise<RuleDocument[]>,
+-      withDbRetry(db => db.getAll('rule_chunks')) as Promise<RuleChunk[]>,
+-    ]);
+-    const noteIds = new Set(documents
++    const documents = await withDbRetry(db => db.getAll('rule_documents')) as RuleDocument[];
++    const noteIds = documents
+       .filter(document => document.type === 'notes' || /save|campanha|sessão|sessao|diário|diario|nota/i.test(document.title))
+-      .map(document => document.id));
+-    const noteChunks = chunks.filter(chunk => noteIds.has(chunk.documentId));
++      .map(document => document.id);
++    if (!noteIds.length) return { chunks: [] as RuleChunk[], contextString: '' };
++
++    // Não carregue toda a biblioteca só para procurar notas de campanha.
++    const noteChunks = await withDbRetry(async db => {
++      const groups = await Promise.all(noteIds.map(id => db.getAllFromIndex('rule_chunks', 'by-doc', id)));
++      return groups.flat() as RuleChunk[];
++    });
+     return selectContext(noteChunks, `${query} campanha progresso inventário condições missão notas`, limit, 'NOTA');
+   }
+ 
+--- a/src/screens/AdventureScreenV3.tsx
++++ b/src/screens/AdventureScreenV3.tsx
+@@ -77,6 +77,11 @@
+     if (timer) window.clearTimeout(timer);
+   }
+ };
++
++const yieldToUi = () => new Promise<void>(resolve => {
++  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => window.setTimeout(resolve, 0));
++  else window.setTimeout(resolve, 0);
++});
+ 
+ function naturalPlace(hex: IndividualHex) {
+   const terrainKey = hex.terrainResolution?.finalTerrain || hex.physicalTerrain || hex.terrain || '';
+@@ -560,6 +565,10 @@
+     roll = false,
+   ) => {
+     const intent = NarrativeIntentService.classify(playerText, { initial, rollResolution: roll });
++    if (!initial) {
++      setMessage('Preparando contexto da ação sem bloquear a tela...');
++      await yieldToUi();
++    }
+     const availableNeighborIds = await MapTravelService.getAvailableNeighborIds(current.coordinate);
+     const context = await MasterContextBuilder.build({
+       campaign: active,
+@@ -851,7 +860,10 @@
+     setBusy(true);
+     setMasterPending(true);
+     setError('');
+-    setMessage('Gemini está respondendo à sua ação...');
++    setMessage('Ação recebida. Preparando o Mestre...');
++    // 3.3.10: garante um frame real antes de qualquer leitura/RAG. O toque nunca
++    // pode parecer um congelamento enquanto o contexto local é preparado.
++    await yieldToUi();
+     try {
+       let active = await CampaignService.getActive(true);
+       if (!active) throw new Error('Campanha indisponível.');
+@@ -899,10 +911,11 @@
+           .then(updated => setHex(previous => previous?.id === destinationId ? updated : previous))
+           .catch(environmentError => console.warn('[Terrain] Enriquecimento ambiental adiado:', environmentError));
+       }
+-      // 3.3.9: a preparação local terminou. A partir daqui a chamada remota não
++      // 3.3.10: a preparação local terminou. A partir daqui a chamada remota não
+       // congela a interface inteira. masterPending impede envio duplicado e mantém
+       // o botão Cancelar disponível enquanto a tela continua navegável.
+       setBusy(false);
++      await yieldToUi();
+       let raw: any;
+       try {
+         raw = await withHardDeadline(
+--- /dev/null
++++ b/scripts/verify-runtime-3310.mjs
+@@ -0,0 +1,56 @@
++import fs from 'node:fs';
++import { performance } from 'node:perf_hooks';
++import { selectRuleContextForTesting } from '../src/services/RulesRetrievalService.ts';
++
++const read = p => fs.readFileSync(p, 'utf8');
++const adventure = read('src/screens/AdventureScreenV3.tsx');
++const rules = read('src/services/RulesRetrievalService.ts');
++const orchestrator = read('src/services/MasterOrchestratorService.ts');
++const css = read('src/index.css');
++const client = read('src/services/GeminiClientService.ts');
++const version = read('src/version.ts');
++const gateway = read('android/app/src/main/java/com/braseiro/forbiddenlands/GeminiGatewayPlugin.java');
++const checks = [
++  ['version_3310', version.includes("APP_VERSION = '3.3.10'") && version.includes('ANDROID_VERSION_CODE = 303010')],
++  ['touch_fix_preserved', adventure.includes('className="adventure-action-button"') && css.includes('touch-action: manipulation') && css.includes('.adventure-action-button > * { pointer-events: none !important; }')],
++  ['pending_action_feedback_preserved', adventure.includes('pendingActionText') && adventure.includes('Enviado ao Gemini') && adventure.includes('adventure-action-cancel')],
++  ['interactive_single_model_preserved', orchestrator.includes('input.interactiveFast ? 1') && orchestrator.includes('input.interactiveFast ? 24_000') && orchestrator.includes('maxOutputTokens: input.interactiveFast ? 1450')],
++  ['action_paints_before_work', adventure.includes("setMessage('Ação recebida. Preparando o Mestre...')") && adventure.includes('await yieldToUi()')],
++  ['context_stage_visible', adventure.includes('Preparando contexto da ação sem bloquear a tela...')],
++  ['action_cancel_preserved', adventure.includes('cancelMasterRequest') && adventure.includes('GeminiClientService.cancelActiveRequests')],
++  ['cooperative_rule_scan', rules.includes('COOPERATIVE_BATCH') && rules.includes('await yieldToEventLoop()')],
++  ['normalized_chunk_cache', rules.includes('normalizedChunkCache') && rules.includes('prepareChunk')],
++  ['no_split_occurrence_counter', rules.includes('occurrenceCount') && !rules.includes('text.split(term).length - 1')],
++  ['notes_use_by_doc_index', rules.includes("getAllFromIndex('rule_chunks', 'by-doc', id)")],
++  ['native_network_off_ui_thread', gateway.includes('networkExecutor.submit') && gateway.includes('braseiro-gemini-gateway')],
++  ['native_cancel_disconnects', gateway.includes('connection.disconnect()') && gateway.includes('future.cancel(true)')],
++  ['tts_338_fix_preserved', gateway.includes('/v1beta/interactions') && client.includes('requestTtsInteraction') && adventure.includes('O app não trocou para a voz Android')],
++];
++let bad = 0;
++for (const [name, ok] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); if (!ok) bad++; }
++
++const chunks = Array.from({ length: 10000 }, (_, i) => ({
++  id: `bench-${i}`,
++  documentId: `doc-${i % 14}`,
++  sourceLabel: i % 3 === 0 ? 'Player Handbook' : 'Gamemaster Guide',
++  pageNumber: 1 + (i % 220),
++  text: `Exploração sobrevivência viagem acampamento terreno floresta ruína perícia atributo risco consequência personagem ${i}. `.repeat(4),
++}));
++let ticks = 0;
++let maxGap = 0;
++let last = performance.now();
++const timer = setInterval(() => {
++  const now = performance.now();
++  maxGap = Math.max(maxGap, now - last);
++  last = now;
++  ticks += 1;
++}, 5);
++const started = performance.now();
++const result = await selectRuleContextForTesting(chunks, 'explorar ruína floresta procurar perigo sobrevivência viagem', 7);
++const elapsed = performance.now() - started;
++clearInterval(timer);
++const performanceOk = result.chunks.length > 0 && ticks >= 3 && maxGap < 300 && elapsed < 6000;
++console.log(`${performanceOk ? 'PASS' : 'FAIL'} cooperative_benchmark elapsed=${elapsed.toFixed(1)}ms ticks=${ticks} maxGap=${maxGap.toFixed(1)}ms selected=${result.chunks.length}`);
++if (!performanceOk) bad++;
++if (bad) process.exit(1);
++console.log(`PASS runtime-3310 ${checks.length + 1}/${checks.length + 1}`);
+--- /dev/null
++++ b/HOTFIX_3.3.10_ACTION_FREEZE_ROOT_CAUSE.md
+@@ -0,0 +1,7 @@
++# Forbidden Lands 3.3.10 — Action Freeze Root Cause
++
++- Corrige o bloqueio da WebView durante a preparação de contexto de ações sugeridas/Ação Livre.
++- Busca de regras agora normaliza cada chunk uma vez, usa cache, contagem sem `split()` e cede o event loop em lotes.
++- Notas de campanha usam o índice `by-doc` e deixam de carregar toda a biblioteca de regras.
++- O clique pinta imediatamente o estado pendente antes de leituras/RAG.
++- Cancelamento nativo, TTS Gemini/Charon, primeira cena Gemini e pipeline único são preservados.
