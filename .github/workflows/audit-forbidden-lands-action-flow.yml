@@ -25,19 +25,9 @@ jobs:
           download_one() {
             local share="$1" file="$2" sha="$3" out="$4"
             curl -fsSL "https://api.firestorage.ai/dev/file/shares/$share/files?maxResults=1000" -o /tmp/files.json
-            python3 - "$file" <<'PY'
-import json,sys
-wanted=sys.argv[1]
-data=json.load(open('/tmp/files.json', encoding='utf-8'))
-if not any(str(x.get('fileId')) == wanted for x in (data.get('files') or [])):
-    raise SystemExit('source file not found: '+wanted)
-PY
+            python3 -c 'import json,sys; wanted=sys.argv[1]; data=json.load(open("/tmp/files.json",encoding="utf-8")); assert any(str(x.get("fileId"))==wanted for x in (data.get("files") or [])), "source file not found"' "$file"
             curl -fsSL -X POST "https://api.firestorage.ai/dev/file/shares/$share/files/$file/download" -o /tmp/dl.json
-            url="$(python3 - <<'PY'
-import json
-print(json.load(open('/tmp/dl.json',encoding='utf-8')).get('downloadUrl') or '')
-PY
-)"
+            url="$(python3 -c 'import json; print(json.load(open("/tmp/dl.json",encoding="utf-8")).get("downloadUrl") or "")')"
             test -n "$url"
             curl -fL --retry 5 --retry-delay 2 "$url" -o "$out"
             echo "$sha  $out" | sha256sum -c -
@@ -56,44 +46,14 @@ PY
             find src338 src339 -type f \( -name package.json -o -name GeminiGatewayPlugin.java \) | sort
             echo
             echo "=== 3.3.8 ACTION TERMS ==="
-            grep -RniE --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle               "Ação Livre|acao livre|adventure-action|predefin|busy|setBusy|send\(|sendAction|cancel|GeminiGateway|Enviado ao Gemini|onClick|pointer|touch" src338 | head -n 2500 || true
+            grep -RniE --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle --exclude-dir=dist "Ação Livre|acao livre|adventure-action|predefin|busy|setBusy|send\(|sendAction|cancel|GeminiGateway|Enviado ao Gemini|onClick|pointer|touch" src338 | head -n 4000 || true
             echo
             echo "=== 3.3.9 ACTION TERMS ==="
-            grep -RniE --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle               "Ação Livre|acao livre|adventure-action|predefin|busy|setBusy|send\(|sendAction|cancel|GeminiGateway|Enviado ao Gemini|onClick|pointer|touch" src339 | head -n 2500 || true
+            grep -RniE --exclude-dir=node_modules --exclude-dir=build --exclude-dir=.gradle --exclude-dir=dist "Ação Livre|acao livre|adventure-action|predefin|busy|setBusy|send\(|sendAction|cancel|GeminiGateway|Enviado ao Gemini|onClick|pointer|touch" src339 | head -n 4000 || true
           } > audit/ACTION_AUDIT.txt
 
-          python3 - <<'PY'
-from pathlib import Path
-import os, difflib
+          diff -ruN             --exclude=node_modules --exclude=build --exclude=.gradle --exclude=dist             src338 src339 > audit/DIFF_338_339.patch || true
 
-def files(root):
-    out={}
-    for p in Path(root).rglob('*'):
-        if not p.is_file(): continue
-        s=str(p)
-        if any(x in s for x in ['/node_modules/','/build/','/.gradle/','/dist/']):
-            continue
-        if p.suffix.lower() in {'.ts','.tsx','.js','.jsx','.json','.java','.kt','.css','.html','.mjs','.cjs'}:
-            rel=str(p.relative_to(root))
-            out[rel]=p
-    return out
-
-a=files('src338'); b=files('src339')
-with open('audit/DIFF_338_339.patch','w',encoding='utf-8') as w:
-    for rel in sorted(set(a)|set(b)):
-        if rel not in a or rel not in b:
-            w.write(f"\n=== FILE PRESENCE {rel}: 338={rel in a} 339={rel in b} ===\n")
-            continue
-        try:
-            x=a[rel].read_text(encoding='utf-8').splitlines(True)
-            y=b[rel].read_text(encoding='utf-8').splitlines(True)
-        except Exception:
-            continue
-        if x!=y:
-            w.writelines(difflib.unified_diff(x,y,fromfile='338/'+rel,tofile='339/'+rel,n=5))
-PY
-
-          # Pack only editable/source material for local forensic review.
           tar -czf audit/FL338_SOURCE_TREE.tar.gz             --exclude='node_modules' --exclude='build' --exclude='.gradle' --exclude='dist' src338
           tar -czf audit/FL339_SOURCE_TREE.tar.gz             --exclude='node_modules' --exclude='build' --exclude='.gradle' --exclude='dist' src339
           cp incoming/FL338.zip audit/
