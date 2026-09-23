@@ -1,0 +1,45 @@
+name: Publish Braseiro Kokoro PT-BR Engine
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/publish-braseiro-kokoro-ptbr-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: bra83/hello-world
+          run-id: 35831968427
+          name: braseiro-kokoro-ptbr-engine-1.13.8
+          path: engine
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f engine/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk
+          cat engine/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk.sha256
+          ls -lh engine/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="braseiro-kokoro-ptbr-engine-1.13.8-20260923"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" engine/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk --clobber
+          else
+            gh release create "$TAG"               engine/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk               --title "Braseiro Kokoro PT-BR Engine 1.13.8"               --notes "Sherpa-ONNX 1.13.8 + Kokoro PT-BR. maxNumSentences=2, silenceScale=0.06, numThreads=4, prewarm, streaming callback, voices Dora/Alex/Santa."
+          fi
