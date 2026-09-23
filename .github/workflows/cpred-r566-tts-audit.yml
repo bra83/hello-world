@@ -1,0 +1,110 @@
+name: Cyberpunk RED R5.66 TTS runtime audit
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/cpred-r566-tts-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE_URL: "https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r5.49-real-device-fix/CYBERPUNK_RED_R5_49_REAL_DEVICE_FIX_CHECKPOINT.zip"
+  BASE_SHA256: "a47e6c46ac3683d85eacda58f083aef308ddcb737ceb28fd39b42f579ee1577a"
+  OVERLAY_URL: "https://firestorage.ai/ja/f/zDP96SWo6g3a"
+  OVERLAY_SHA256: "15695b2e64daf6eaaf62986a757f5077db3cadfe17b95dd524540bb8cd047d1f"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified R5.49 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming
+          curl -fL --retry 4 --retry-delay 2 -o incoming/base.zip "$BASE_URL"
+          echo "$BASE_SHA256  incoming/base.zip" | sha256sum -c -
+          unzip -t incoming/base.zip >/dev/null
+
+      - name: Download R5.65 visual base overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cpred-overlay
+          cd /tmp/cpred-overlay
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.55.0
+          npx playwright install chromium
+          cat > one.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          const [url,out]=process.argv.slice(2);
+          const b=await chromium.launch({headless:true});
+          const c=await b.newContext({acceptDownloads:true,locale:'ja-JP'});
+          const p=await c.newPage();
+          async function open(){await p.goto(url,{waitUntil:'domcontentloaded',timeout:60000});await p.waitForTimeout(1600)}
+          await open();
+          for(let round=0;round<14;round++){
+            const es=p.locator('a,button,[role="button"]');
+            for(let i=0;i<Math.min(await es.count(),220);i++){
+              const e=es.nth(i);let meta='';
+              try{meta=(await e.innerText())+' '+(await e.getAttribute('title')||'')+' '+(await e.getAttribute('aria-label')||'')+' '+(await e.getAttribute('href')||'')}catch{}
+              if(!/download|ダウンロード|保存|取得|zip|file|ファイル/i.test(meta))continue;
+              try{
+                const q=p.waitForEvent('download',{timeout:9000});
+                await e.click({timeout:4500});
+                const d=await q;await d.saveAs(out);await b.close();process.exit(0);
+              }catch{}
+            }
+            await p.waitForTimeout(1400);
+            if(round%4===3)await open();
+          }
+          await b.close();process.exit(2);
+          NODE
+          node one.mjs "$OVERLAY_URL" "$GITHUB_WORKSPACE/incoming/overlay.zip"
+          cd "$GITHUB_WORKSPACE"
+          echo "$OVERLAY_SHA256  incoming/overlay.zip" | sha256sum -c -
+          unzip -t incoming/overlay.zip >/dev/null
+
+      - name: Assemble R5.66 source tree
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work && mkdir work
+          unzip -q incoming/base.zip -d work
+          PROJECT="$(find work -mindepth 1 -maxdepth 1 -type d | head -1)"
+          ROOT="$PROJECT/android"
+          unzip -oq incoming/overlay.zip -d "$ROOT"
+          python3 cyberpunk-red/patches/r566_phone_runtime_fix.py "$ROOT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Audit Gemini TTS runtime
+        shell: bash
+        env:
+          ROOT: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          echo "=== R5.66 TTS FILES ==="
+          grep -RIlE 'gemini[-_].*(tts|TTS)|ttsModel|Charon|speechConfig|responseModalit|inlineData|AudioTrack|MediaPlayer|TextToSpeech|voice\.speak|fun speak|suspend fun.*speak' "$ROOT" \
+            --include='*.kt' --include='*.java' --include='*.js' --include='*.mjs' --include='*.json' \
+            | sort | tee /tmp/tts-files.txt
+          test -s /tmp/tts-files.txt
+
+          echo "=== R5.66 TTS MATCHES ==="
+          while IFS= read -r f; do
+            echo
+            echo "----- $f -----"
+            grep -nEi 'gemini[-_].*(tts|TTS)|ttsModel|Charon|speechConfig|responseModalit|inlineData|AudioTrack|MediaPlayer|TextToSpeech|voice\.speak|fun speak|suspend fun.*speak|chunk|queue|timeout|24000' "$f" | head -n 220 || true
+          done < /tmp/tts-files.txt
+
+          echo "=== MODEL DEFAULTS ==="
+          grep -RniE 'gemini-[0-9.]+-[a-z0-9.-]*tts[a-z0-9.-]*' "$ROOT" \
+            --include='*.kt' --include='*.java' --include='*.js' --include='*.json' | head -n 200 || true
+
+          echo "=== TTS AUDIT COMPLETE ==="
