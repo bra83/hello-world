@@ -64,7 +64,7 @@ jobs:
               ANDROID_ROOT="$candidate"
               break
             fi
-          done < <(find work -type f \\( -name settings.gradle -o -name settings.gradle.kts \\) | sort)
+          done < <(find work -type f \( -name settings.gradle -o -name settings.gradle.kts \) | sort)
           test -n "$ANDROID_ROOT"
           WEB_ROOT="$(dirname "$ANDROID_ROOT")"
           test -f "$WEB_ROOT/package.json"
