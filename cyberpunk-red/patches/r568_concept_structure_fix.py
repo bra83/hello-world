@@ -157,7 +157,7 @@ if "R5.68 — CONCEPT STRUCTURE PASS" not in s:
 
 /* Concept navigation: INÍCIO / FICHA / MAPA / MOCHILA / MENU. */
 .phone.app-shell .tabs.bottom-nav{
-  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
   height:56px!important;
 }
 .phone.app-shell .tabs.bottom-nav>button:not(.nav-target-only){
@@ -272,7 +272,7 @@ body[data-active-tab="table"] .brand-lockup span{font-size:6px!important;letter-
   margin-top:7px!important;
 }
 #tab-sheet .sheet-vitals>div{min-height:35px!important;padding:5px 7px!important}
-#tab-sheet .sheet-stats{grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:4px!important;padding:6px!important}
+#tab-sheet .sheet-stats{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;padding:6px!important}
 #tab-sheet .sheet-stats>div{min-height:47px!important;padding:5px 3px!important}
 #tab-sheet .sheet-stats b{font-size:14px!important}
 #tab-sheet .panel{margin-bottom:7px!important}
@@ -329,6 +329,20 @@ body[data-active-tab="table"] .brand-lockup span{font-size:6px!important;letter-
 #moreSheet .more-list-advanced{margin-top:4px!important;gap:4px!important}
 #moreSheet .more-list-advanced>button{min-height:42px!important}
 #moreSheet .more-diagnostics{display:none!important}
+#moreSheet.more-sheet{
+  align-items:flex-start!important;
+  justify-content:flex-start!important;
+}
+body.more-sheet-open .phone.app-shell .tabs.bottom-nav>button.active:not(#moreNavBtn)::after{
+  display:none!important;
+}
+body.more-sheet-open .phone.app-shell .tabs.bottom-nav>button.active:not(#moreNavBtn){
+  color:#758991!important;
+}
+body.more-sheet-open .phone.app-shell #moreNavBtn{
+  color:var(--r568-red)!important;
+}
+
 
 /* Keep operational Session dense once the user scrolls from dashboard. */
 .session-live-stack .session-world-card,
@@ -339,7 +353,7 @@ body[data-active-tab="table"] .brand-lockup span{font-size:6px!important;letter-
 /* Phone-width concept alignment. */
 @media(max-width:430px){
   .home-dashboard{padding-left:4px!important;padding-right:4px!important}
-  #tab-sheet .sheet-stats{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+  #tab-sheet .sheet-stats{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 }
 '''
 css.write_text(s, encoding="utf-8")
