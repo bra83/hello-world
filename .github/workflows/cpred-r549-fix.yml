@@ -257,9 +257,13 @@ jobs:
             adb shell wm size 1440x3088
             adb shell wm density 560
             adb install -r BRASEIRO-CYBERPUNK-RED-R5.69-DEBUG.apk
+            # Pixel Launcher occasionally ANRs on the headless emulator and steals all taps.
+            adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
             adb shell am force-stop com.braseiro.cyberpunkred
             adb shell am start -W -n com.braseiro.cyberpunkred/.MainActivity
             sleep 18
+            adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+            sleep 2
             adb shell pidof com.braseiro.cyberpunkred
 
             adb shell uiautomator dump /sdcard/session.xml >/dev/null || true
