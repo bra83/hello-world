@@ -84,7 +84,6 @@ jobs:
           npm config set registry https://registry.npmjs.org/
           npm ci --no-audit --no-fund
           npm run verify:runtime-3312
-          npm run verify:runtime-3311
           npm run verify:rules
 
       - name: Build web and sync Android
