@@ -1,0 +1,37 @@
+name: Publish Braseiro Kokoro PT-BR Engine V2
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/publish-braseiro-kokoro-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download validated V2 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh run download 35836258875             --repo "${{ github.repository }}"             --name "braseiro-kokoro-ptbr-engine-1.13.8-v2"             --dir out
+          test -f out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V2.apk
+          cat out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V2.apk.sha256
+
+      - name: Publish APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="braseiro-kokoro-ptbr-engine-v2-20260923"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG"               --repo "${{ github.repository }}"               --title "Braseiro Kokoro PT-BR Engine V2"               --notes "Corrige seleção persistente como engine Android, pt-BR/por-BRA, tela branca e inicialização pesada no caminho de configuração."
+          fi
+          gh release upload "$TAG"             out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V2.apk             out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V2.apk.sha256             --repo "${{ github.repository }}"             --clobber
