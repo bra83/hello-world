@@ -499,28 +499,8 @@ jobs:
           if lang_count != 1:
               raise SystemExit('language-reject block not found')
 
-          # Accept both our named voices and the BCP-47/default aliases some
-          # Android builds probe while switching engines.
-          old='''              override fun onIsValidVoiceName(voiceName: String?): Int =
-                  if (voiceName != null && ptBrVoiceIds.containsKey(voiceName)) TextToSpeech.SUCCESS
-                  else TextToSpeech.ERROR
-
-              override fun onLoadVoice(voiceName: String?): Int = onIsValidVoiceName(voiceName)'''
-          new='''              private fun isPtBrAlias(voiceName: String?): Boolean {
-                  val value = voiceName?.lowercase(Locale.ROOT) ?: return false
-                  return value == "pt-br" || value == "por-bra" || value == "pt_br" ||
-                      value == "por_bra" || value.startsWith("pt-br-")
-              }
-
-              override fun onIsValidVoiceName(voiceName: String?): Int =
-                  if ((voiceName != null && ptBrVoiceIds.containsKey(voiceName)) || isPtBrAlias(voiceName))
-                      TextToSpeech.SUCCESS else TextToSpeech.ERROR
-
-              override fun onLoadVoice(voiceName: String?): Int = onIsValidVoiceName(voiceName)'''
-          if old not in s:
-              raise SystemExit('voice validation marker not found')
-          s=s.replace(old,new,1)
           service.write_text(s)
+
 
           # TTS service gets its own process: a large neural model can no longer
           # kill the settings Activity/UI if native initialization fails or the
@@ -561,36 +541,6 @@ jobs:
           g=g.replace('versionName = "1.13.8-braseiro-ptbr-v2"', 'versionName = "1.13.8-braseiro-ptbr-v3"')
           gradle.write_text(g)
 
-          # Improve the test button: keep the UI alive and report engine errors.
-          q=settings.read_text()
-          q=q.replace(
-              'import android.speech.tts.TextToSpeech\n',
-              'import android.speech.tts.TextToSpeech\nimport android.speech.tts.UtteranceProgressListener\n'
-          )
-          old='''                                  t.speak("As ruínas estão silenciosas. O vento atravessa as pedras quebradas.",
-                                      TextToSpeech.QUEUE_FLUSH, null, "braseiro-test")
-                                  runOnUiThread { status.text = "Status: teste enviado." }'''
-          new='''                                  t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                                      override fun onStart(utteranceId: String?) {
-                                          runOnUiThread { status.text = "Status: sintetizando..." }
-                                      }
-                                      override fun onDone(utteranceId: String?) {
-                                          runOnUiThread { status.text = "Status: teste concluído." }
-                                      }
-                                      override fun onError(utteranceId: String?) {
-                                          runOnUiThread { status.text = "Status: a engine falhou ao sintetizar." }
-                                      }
-                                      override fun onError(utteranceId: String?, errorCode: Int) {
-                                          runOnUiThread { status.text = "Status: erro TTS " + errorCode }
-                                      }
-                                  })
-                                  t.speak("As ruínas estão silenciosas. O vento atravessa as pedras quebradas.",
-                                      TextToSpeech.QUEUE_FLUSH, null, "braseiro-test")
-                                  runOnUiThread { status.text = "Status: teste enviado; aguardando áudio..." }'''
-          if old not in q:
-              raise SystemExit('settings test marker not found')
-          q=q.replace(old,new,1)
-          settings.write_text(q)
           PY
 
           grep -q 'android:process=":tts"' sherpa/android/SherpaOnnxTtsEngine/app/src/main/AndroidManifest.xml
