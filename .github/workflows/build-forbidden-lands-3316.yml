@@ -1,0 +1,214 @@
+name: Forbidden Lands 3.3.16 Local TTS Audio Buffer
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/build-forbidden-lands-3316.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: "9e3a958956b145869a554888ded4a5f3712e96065c2d302ca8c145ff371cece7"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.16_LOCAL_TTS_AUDIO_BUFFER_ANDROID_STUDIO.zip"
+  FIRE_API: "https://api.firestorage.ai/dev/file"
+  SHARE_ID: "U9VICVqzB5wo"
+  FILE_ID: "01a0ccf6bd2373ad84316b1fd0b86ae3"
+  APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.16.apk"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact 3.3.16 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work
+          curl -fsSL "$FIRE_API/shares/$SHARE_ID/files?maxResults=1000" -o /tmp/fl-files.json
+          python3 - <<'PY'
+          import json, os
+          data=json.load(open('/tmp/fl-files.json', encoding='utf-8'))
+          wanted=os.environ['FILE_ID']
+          if not any(str(x.get('fileId')) == wanted for x in (data.get('files') or [])):
+              raise SystemExit('Forbidden Lands 3.3.16 source not found')
+          PY
+          curl -fsSL -X POST "$FIRE_API/shares/$SHARE_ID/files/$FILE_ID/download" -o /tmp/fl-download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/fl-download.json', encoding='utf-8')).get('downloadUrl') or '')
+          PY
+          )"
+          test -n "$DOWNLOAD_URL"
+          curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 300 "$DOWNLOAD_URL" -o "incoming/$SOURCE_NAME"
+          echo "$SOURCE_SHA256  incoming/$SOURCE_NAME" | sha256sum -c -
+          unzip -t "incoming/$SOURCE_NAME" > SOURCE_ZIP_INTEGRITY.txt
+          unzip -q "incoming/$SOURCE_NAME" -d work
+
+      - name: Locate Android and web roots
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          ANDROID_ROOT=""
+          while IFS= read -r settings; do
+            candidate="$(dirname "$settings")"
+            if [ -f "$candidate/gradlew" ] && [ -f "$candidate/gradle/wrapper/gradle-wrapper.jar" ] && [ -f "$candidate/app/src/main/AndroidManifest.xml" ]; then
+              ANDROID_ROOT="$candidate"
+              break
+            fi
+          done < <(find work -type f \( -name settings.gradle -o -name settings.gradle.kts \) | sort)
+          test -n "$ANDROID_ROOT"
+          WEB_ROOT="$(dirname "$ANDROID_ROOT")"
+          test -f "$WEB_ROOT/package.json"
+          chmod +x "$ANDROID_ROOT/gradlew"
+          echo "android_root=$GITHUB_WORKSPACE/$ANDROID_ROOT" >> "$GITHUB_OUTPUT"
+          echo "web_root=$GITHUB_WORKSPACE/$WEB_ROOT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies and focused gates
+        shell: bash
+        working-directory: ${{ steps.src.outputs.web_root }}
+        run: |
+          set -euo pipefail
+          npm config set registry https://registry.npmjs.org/
+          npm ci --no-audit --no-fund
+          npm run verify:runtime-3316
+          npm run verify:rules
+
+      - name: Build web and sync Android
+        shell: bash
+        working-directory: ${{ steps.src.outputs.web_root }}
+        run: |
+          set -euo pipefail
+          npm run android:sync
+          test -f android/app/src/main/assets/public/index.html
+          grep -R -q "TTS local neural / Kokoro — buffer de áudio" android/app/src/main/assets/public/assets
+          grep -R -q "Velocidade de reprodução local" android/app/src/main/assets/public/assets
+          grep -q "public void speakBufferedSequence" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -q "synthesizeToFile" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -q "params.setSpeed(bufferedPlaybackSpeed)" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -q "addLeadingSilenceToPcmWav(file, 90)" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -R -q "Gerar ou trocar retrato" android/app/src/main/assets/public/assets
+          grep -q "versionCode 303016" android/app/build.gradle
+          grep -q 'versionName "3.3.16"' android/app/build.gradle
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Android
+        shell: bash
+        working-directory: ${{ steps.src.outputs.android_root }}
+        run: |
+          set -euo pipefail
+          ./gradlew --version --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_VERSION.txt"
+          ./gradlew projects --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_PROJECTS.txt"
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_RESOURCES.txt"
+          ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_COMPILE.txt"
+
+      - name: Assemble APK
+        shell: bash
+        working-directory: ${{ steps.src.outputs.android_root }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_ASSEMBLE.txt"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | sort | head -1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/$APK_NAME"
+
+      - name: Validate APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "$APK_NAME" > APK_ZIP_TEST.txt
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/aapt" dump badging "$APK_NAME" | tee APK_BADGING.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK_NAME" | tee APK_SIGNATURE.txt
+          grep -q "package: name='com.braseiro.forbiddenlands'" APK_BADGING.txt
+          grep -q "versionCode='303016'" APK_BADGING.txt
+          grep -q "versionName='3.3.16'" APK_BADGING.txt
+          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
+
+      - name: Upload APK before smoke
+        uses: actions/upload-artifact@v4
+        with:
+          name: forbidden-lands-3.3.16-test-apk
+          compression-level: 0
+          retention-days: 7
+          path: |
+            BRASEIRO_FORBIDDEN_LANDS_3.3.16.apk
+            BRASEIRO_FORBIDDEN_LANDS_3.3.16.apk.sha256
+            APK_BADGING.txt
+            APK_SIGNATURE.txt
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Android smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb install -r "$APK_NAME"
+            adb shell pm clear com.braseiro.forbiddenlands
+            adb shell am start -W -n com.braseiro.forbiddenlands/.MainActivity
+            sleep 12
+            adb shell pidof com.braseiro.forbiddenlands
+            adb exec-out screencap -p > FORBIDDEN_LANDS_3.3.16_FIRST_LAUNCH.png
+            adb logcat -d -t 1200 > FORBIDDEN_LANDS_3.3.16_LOGCAT.txt
+            ! grep -q "FATAL EXCEPTION" FORBIDDEN_LANDS_3.3.16_LOGCAT.txt
+
+      - name: Upload validated APK and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forbidden-lands-3.3.16-validated
+          compression-level: 0
+          retention-days: 7
+          path: |
+            BRASEIRO_FORBIDDEN_LANDS_3.3.16.apk
+            BRASEIRO_FORBIDDEN_LANDS_3.3.16.apk.sha256
+            APK_ZIP_TEST.txt
+            APK_BADGING.txt
+            APK_SIGNATURE.txt
+            GRADLE_VERSION.txt
+            GRADLE_PROJECTS.txt
+            GRADLE_RESOURCES.txt
+            GRADLE_COMPILE.txt
+            GRADLE_ASSEMBLE.txt
+            FORBIDDEN_LANDS_3.3.16_FIRST_LAUNCH.png
+            FORBIDDEN_LANDS_3.3.16_LOGCAT.txt
+            SOURCE_ZIP_INTEGRITY.txt
