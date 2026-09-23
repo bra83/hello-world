@@ -64,19 +64,21 @@ jobs:
           print('Model bytes:', sum(os.path.getsize(os.path.join(r,f)) for r,_,fs in os.walk(dest) for f in fs))
           PY
 
-      - name: Install arm64 native sherpa libraries
+      - name: Install Android native sherpa libraries
         shell: bash
         run: |
           set -euo pipefail
           curl -fL --retry 5 --retry-delay 2             "https://github.com/k2-fsa/sherpa-onnx/releases/download/$SHERPA_TAG/sherpa-onnx-$SHERPA_TAG-android.tar.bz2"             -o /tmp/sherpa-android.tar.bz2
           mkdir -p /tmp/sherpa-android
           tar -xjf /tmp/sherpa-android.tar.bz2 -C /tmp/sherpa-android
-          dest="sherpa/android/SherpaOnnxTtsEngine/app/src/main/jniLibs/arm64-v8a"
-          rm -rf "$dest"
-          mkdir -p "$dest"
-          find /tmp/sherpa-android -type f -path '*/arm64-v8a/*.so' -exec cp -v {} "$dest/" \;
-          test "$(find "$dest" -type f -name '*.so' | wc -l)" -ge 2
-          ls -lh "$dest"
+          for arch in arm64-v8a x86_64; do
+            dest="sherpa/android/SherpaOnnxTtsEngine/app/src/main/jniLibs/$arch"
+            rm -rf "$dest"
+            mkdir -p "$dest"
+            find /tmp/sherpa-android -type f -path "*/$arch/*.so" -exec cp -v {} "$dest/" \;
+            test "$(find "$dest" -type f -name '*.so' | wc -l)" -ge 2
+            ls -lh "$dest"
+          done
 
       - name: Patch engine profile
         shell: bash
@@ -427,7 +429,7 @@ jobs:
           g=g.replace('versionCode = 20260910', 'versionCode = 1130802')
           g=g.replace('versionName = "1.13.8"', 'versionName = "1.13.8-braseiro-ptbr-v2"')
           needle='''        versionName = "1.13.8-braseiro-ptbr-v2"'''
-          g=g.replace(needle, needle+'\n\n        ndk { abiFilters += listOf("arm64-v8a") }')
+          # Keep arm64-v8a for the Samsung device and x86_64 for deterministic CI smoke.
           gradle.write_text(g)
 
           m=manifest.read_text()
@@ -483,6 +485,7 @@ jobs:
           "$BT/aapt" dump badging "$APK_NAME" | tee ENGINE_APK_BADGING.txt
           "$BT/apksigner" verify --verbose --print-certs "$APK_NAME" | tee ENGINE_APK_SIGNATURE.txt
           unzip -l "$APK_NAME" | grep -q 'lib/arm64-v8a/'
+          unzip -l "$APK_NAME" | grep -q 'lib/x86_64/'
           unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/model.onnx'
           unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/voices.bin'
           unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/tokens.txt'
