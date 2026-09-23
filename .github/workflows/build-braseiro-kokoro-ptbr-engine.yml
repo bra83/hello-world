@@ -146,6 +146,7 @@ jobs:
           manifest.write_text(m)
 
           st=strings.read_text()
+          st=st.replace('<string name="app_name">TTS Engine: Next-gen Kaldi</string>', '<string name="app_name">Braseiro Kokoro PT-BR</string>')
           st=st.replace('<string name="app_name">SherpaOnnxTtsEngine</string>', '<string name="app_name">Braseiro Kokoro PT-BR</string>')
           st=st.replace('<string name="app_name">SherpaOnnx TTS Engine</string>', '<string name="app_name">Braseiro Kokoro PT-BR</string>')
           strings.write_text(st)
@@ -157,6 +158,7 @@ jobs:
           grep -q 'ptbr_pf_dora_42' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
           grep -q 'ptbr_pm_alex_43' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
           grep -q 'ptbr_pm_santa_44' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
+          grep -q 'Braseiro Kokoro PT-BR' sherpa/android/SherpaOnnxTtsEngine/app/src/main/res/values/strings.xml
 
       - uses: actions/setup-java@v4
         with:
