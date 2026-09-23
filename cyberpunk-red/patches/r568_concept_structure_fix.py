@@ -157,7 +157,7 @@ if "R5.68 — CONCEPT STRUCTURE PASS" not in s:
 
 /* Concept navigation: INÍCIO / FICHA / MAPA / MOCHILA / MENU. */
 .phone.app-shell .tabs.bottom-nav{
-  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
   height:56px!important;
 }
 .phone.app-shell .tabs.bottom-nav>button:not(.nav-target-only){
