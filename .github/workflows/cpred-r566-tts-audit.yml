@@ -107,4 +107,16 @@ jobs:
           grep -RniE 'gemini-[0-9.]+-[a-z0-9.-]*tts[a-z0-9.-]*' "$ROOT" \
             --include='*.kt' --include='*.java' --include='*.js' --include='*.json' | head -n 200 || true
 
+          echo "=== FULL GeminiTtsService.kt ==="
+          sed -n '1,280p' "$ROOT/app/src/main/java/com/braseiro/cyberpunkred/GeminiTtsService.kt"
+
+          echo "=== BarbaraRuntime TTS ==="
+          sed -n '470,610p' "$ROOT/app/src/main/java/com/braseiro/cyberpunkred/BarbaraRuntime.kt"
+
+          echo "=== BarbaraJsBridge TTS ==="
+          sed -n '120,180p' "$ROOT/app/src/main/java/com/braseiro/cyberpunkred/BarbaraJsBridge.kt"
+
+          echo "=== SecureSecretStore TTS ==="
+          sed -n '70,125p' "$ROOT/app/src/main/java/com/braseiro/cyberpunkred/SecureSecretStore.kt"
+
           echo "=== TTS AUDIT COMPLETE ==="
