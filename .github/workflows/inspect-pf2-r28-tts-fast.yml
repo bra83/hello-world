@@ -1,0 +1,111 @@
+name: Inspect Pathfinder R28 TTS Fast
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/inspect-pf2-r28-tts-fast.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: "3a635ae10d9e37a3ed75068c27539a36485470848112784717ed9ef2d3768e11"
+  FIRE_API: "https://api.firestorage.ai/dev/file"
+  SHARE_ID: "Q9EaqosxeXXK"
+  FILE_ID: "01a0c81d60a375449668e568a4163539"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact Pathfinder R28 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work
+          curl -fsSL "$FIRE_API/shares/$SHARE_ID/files?maxResults=1000" -o /tmp/pf-files.json
+          python3 - <<'PY'
+          import json, os
+          data=json.load(open('/tmp/pf-files.json', encoding='utf-8'))
+          wanted=os.environ['FILE_ID']
+          if not any(str(x.get('fileId')) == wanted for x in (data.get('files') or [])):
+              raise SystemExit('Pathfinder R28 source not found')
+          PY
+          curl -fsSL -X POST "$FIRE_API/shares/$SHARE_ID/files/$FILE_ID/download" -o /tmp/pf-download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/pf-download.json', encoding='utf-8')).get('downloadUrl') or '')
+          PY
+          )"
+          test -n "$DOWNLOAD_URL"
+          curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 600 "$DOWNLOAD_URL" -o incoming/source.zip
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          unzip -q incoming/source.zip -d work
+
+      - name: Create focused TTS report
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$GITHUB_WORKSPACE/PF2_R28_TTS_INSPECTION_FAST.txt"
+          : > "$REPORT"
+          echo "PATHFINDER R28 TTS INSPECTION" >> "$REPORT"
+          echo "SOURCE_SHA256=$SOURCE_SHA256" >> "$REPORT"
+          echo >> "$REPORT"
+
+          ANDROID_ROOT=""
+          while IFS= read -r settings; do
+            candidate="$(dirname "$settings")"
+            if [ -f "$candidate/gradlew" ] && [ -f "$candidate/app/src/main/AndroidManifest.xml" ]; then
+              ANDROID_ROOT="$candidate"
+              break
+            fi
+          done < <(find work -type f \( -name settings.gradle -o -name settings.gradle.kts \) | sort)
+          test -n "$ANDROID_ROOT"
+          WEB_ROOT="$(dirname "$ANDROID_ROOT")"
+          echo "ANDROID_ROOT=$ANDROID_ROOT" >> "$REPORT"
+          echo "WEB_ROOT=$WEB_ROOT" >> "$REPORT"
+          echo >> "$REPORT"
+
+          echo "=== CANDIDATE FILES ===" >> "$REPORT"
+          grep -RIlE --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude-dir=.gradle --exclude-dir=.git             --exclude='*.map' --exclude='*.min.js'             'TextToSpeech|UtteranceProgressListener|QUEUE_ADD|QUEUE_FLUSH|onDone|onError|setSpeechRate|setPitch|getVoices|getEngines|Charon|tts|TTS|voice|voz|speech'             "$WEB_ROOT/src" "$ANDROID_ROOT/app/src/main" 2>/dev/null | sort | tee /tmp/pf-tts-files.txt >> "$REPORT" || true
+
+          echo >> "$REPORT"
+          echo "=== MATCH CONTEXT ===" >> "$REPORT"
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            echo >> "$REPORT"
+            echo "===== FILE: $f =====" >> "$REPORT"
+            grep -nEi -C 8               'TextToSpeech|UtteranceProgressListener|QUEUE_ADD|QUEUE_FLUSH|onDone|onError|setSpeechRate|setPitch|getVoices|getEngines|Charon|tts|TTS|voice|voz|speech'               "$f" >> "$REPORT" || true
+          done < /tmp/pf-tts-files.txt
+
+          echo >> "$REPORT"
+          echo "=== JAVA/KOTLIN FILE INVENTORY ===" >> "$REPORT"
+          find "$ANDROID_ROOT/app/src/main/java" -type f \( -name '*.java' -o -name '*.kt' \) -print | sort >> "$REPORT" || true
+          echo >> "$REPORT"
+          echo "=== MANIFEST ===" >> "$REPORT"
+          cat "$ANDROID_ROOT/app/src/main/AndroidManifest.xml" >> "$REPORT"
+          echo >> "$REPORT"
+          echo "=== PACKAGE JSON SCRIPTS ===" >> "$REPORT"
+          python3 - <<'PY' >> "$REPORT"
+          import json, pathlib
+          p=pathlib.Path("work")
+          files=list(p.rglob("package.json"))
+          for f in files:
+              if "node_modules" in f.parts: continue
+              try:
+                  d=json.loads(f.read_text(encoding="utf-8"))
+              except Exception:
+                  continue
+              print(f)
+              print(json.dumps(d.get("scripts",{}),ensure_ascii=False,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pf2-r28-tts-inspection
+          retention-days: 3
+          path: PF2_R28_TTS_INSPECTION_FAST.txt
