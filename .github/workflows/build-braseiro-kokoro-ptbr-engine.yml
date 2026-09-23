@@ -1,0 +1,219 @@
+name: Braseiro Kokoro PT-BR Engine 1.13.8
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/build-braseiro-kokoro-ptbr-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SHERPA_TAG: v1.13.8
+      MODEL_URL: https://huggingface.co/cristianoaredes/kokoro-pt-br/resolve/main/letrinhas-kokoro-pt.zip?download=true
+      APK_NAME: BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout sherpa-onnx 1.13.8
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$SHERPA_TAG" https://github.com/k2-fsa/sherpa-onnx.git sherpa
+          test -f sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsEngine.kt
+          test -f sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
+
+      - name: Download PT-BR Kokoro model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/model
+          curl -fL --retry 6 --retry-delay 3 --connect-timeout 30 --max-time 1800 "$MODEL_URL" -o /tmp/kokoro-ptbr.zip
+          python3 - <<'PY'
+          import os, zipfile, shutil
+          src='/tmp/kokoro-ptbr.zip'
+          unpack='/tmp/model/unpack'
+          os.makedirs(unpack, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              z.extractall(unpack)
+          roots=[]
+          for root, dirs, files in os.walk(unpack):
+              if 'model.onnx' in files and 'voices.bin' in files and 'tokens.txt' in files:
+                  roots.append(root)
+          if not roots:
+              raise SystemExit('Kokoro PT-BR model files not found in ZIP')
+          root=min(roots, key=len)
+          dest='sherpa/android/SherpaOnnxTtsEngine/app/src/main/assets/kokoro-pt-br'
+          shutil.rmtree(dest, ignore_errors=True)
+          os.makedirs(dest, exist_ok=True)
+          for name in os.listdir(root):
+              p=os.path.join(root,name)
+              q=os.path.join(dest,name)
+              if os.path.isdir(p): shutil.copytree(p,q)
+              else: shutil.copy2(p,q)
+          required=['model.onnx','voices.bin','tokens.txt','espeak-ng-data']
+          for x in required:
+              if not os.path.exists(os.path.join(dest,x)):
+                  raise SystemExit('Missing '+x)
+          print('Model bytes:', sum(os.path.getsize(os.path.join(r,f)) for r,_,fs in os.walk(dest) for f in fs))
+          PY
+
+      - name: Install arm64 native sherpa libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 2             "https://github.com/k2-fsa/sherpa-onnx/releases/download/$SHERPA_TAG/sherpa-onnx-$SHERPA_TAG-android.tar.bz2"             -o /tmp/sherpa-android.tar.bz2
+          mkdir -p /tmp/sherpa-android
+          tar -xjf /tmp/sherpa-android.tar.bz2 -C /tmp/sherpa-android
+          dest="sherpa/android/SherpaOnnxTtsEngine/app/src/main/jniLibs/arm64-v8a"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          find /tmp/sherpa-android -type f -path '*/arm64-v8a/*.so' -exec cp -v {} "$dest/" \;
+          test "$(find "$dest" -type f -name '*.so' | wc -l)" -ge 2
+          ls -lh "$dest"
+
+      - name: Patch engine profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root=Path('sherpa/android/SherpaOnnxTtsEngine')
+          engine=root/'app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsEngine.kt'
+          service=root/'app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt'
+          prefs=root/'app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/PreferencesHelper.kt'
+          gradle=root/'app/build.gradle.kts'
+          manifest=root/'app/src/main/AndroidManifest.xml'
+          strings=root/'app/src/main/res/values/strings.xml'
+
+          s=engine.read_text()
+          s=s.replace('import com.k2fsa.sherpa.onnx.OfflineTts\n', 'import com.k2fsa.sherpa.onnx.OfflineTts\nimport com.k2fsa.sherpa.onnx.GenerationConfig\n')
+          s=s.replace('modelName = null', 'modelName = "model.onnx"', 1)
+          s=s.replace('voices = null', 'voices = "voices.bin"', 1)
+          s=s.replace('modelDir = null', 'modelDir = "kokoro-pt-br"', 1)
+          s=s.replace('dataDir = null', 'dataDir = "kokoro-pt-br/espeak-ng-data"', 1)
+          s=s.replace('lang = null', 'lang = "por"', 1)
+          marker='''            voiceStyle = voiceStyle ?: "",\n        )'''
+          replacement='''            voiceStyle = voiceStyle ?: "",\n            numThreads = 4,\n        ).copy(\n            maxNumSentences = 2,\n            silenceScale = 0.06f,\n        )'''
+          if marker not in s: raise SystemExit('TtsEngine config marker not found')
+          s=s.replace(marker,replacement,1)
+          marker2='''        tts = OfflineTts(assetManager = assets, config = config)'''
+          replacement2='''        tts = OfflineTts(assetManager = assets, config = config)\n\n        // Braseiro PT-BR: prewarm once while the Android engine initializes.\n        // The generated audio is intentionally discarded; the same OfflineTts\n        // instance remains resident for subsequent narration requests.\n        runCatching {\n            tts!!.generateWithConfig(\n                text = "Olá.",\n                config = GenerationConfig(\n                    sid = 43,\n                    speed = 1.0f,\n                    silenceScale = 0.06f,\n                )\n            )\n        }.onFailure { Log.w(TAG, "Kokoro prewarm failed", it) }'''
+          if marker2 not in s: raise SystemExit('OfflineTts init marker not found')
+          s=s.replace(marker2,replacement2,1)
+          engine.write_text(s)
+
+          p=prefs.read_text()
+          p=p.replace('getInt(SID_KEY, 0)', 'getInt(SID_KEY, 43)')
+          prefs.write_text(p)
+
+          s=service.read_text()
+          s=s.replace('import android.speech.tts.TextToSpeechService\n', 'import android.speech.tts.TextToSpeechService\nimport android.speech.tts.Voice\nimport java.util.Locale\nimport kotlin.math.min\n')
+          class_marker='''class TtsService : TextToSpeechService() {'''
+          methods='''class TtsService : TextToSpeechService() {\n    private val ptBrVoiceIds = linkedMapOf(\n        "ptbr_pf_dora_42" to 42,\n        "ptbr_pm_alex_43" to 43,\n        "ptbr_pm_santa_44" to 44,\n    )\n\n    override fun onGetVoices(): MutableList<Voice> = ptBrVoiceIds.map { (name, _) ->\n        Voice(\n            name, Locale("pt", "BR"), Voice.QUALITY_HIGH, Voice.LATENCY_LOW,\n            false, setOf("braseiro-kokoro-ptbr")\n        )\n    }.toMutableList()\n\n    override fun onIsValidVoiceName(voiceName: String?): Int =\n        if (voiceName != null && ptBrVoiceIds.containsKey(voiceName)) TextToSpeech.SUCCESS else TextToSpeech.ERROR\n\n    override fun onLoadVoice(voiceName: String?): Int = onIsValidVoiceName(voiceName)\n\n    override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String =\n        "ptbr_pm_alex_43"\n\n    private fun speakerIdFor(voiceName: String?): Int = ptBrVoiceIds[voiceName] ?: TtsEngine.speakerId'''
+          if class_marker not in s: raise SystemExit('TtsService class marker not found')
+          s=s.replace(class_marker,methods,1)
+          old='''        val ttsCallback: (FloatArray) -> Int = fun(floatSamples): Int {\n            // convert FloatArray to ByteArray\n            val samples = floatArrayToByteArray(floatSamples)\n            val maxBufferSize: Int = callback.maxBufferSize\n            var offset = 0\n            while (offset < samples.size) {\n                val bytesToWrite = Math.min(maxBufferSize, samples.size - offset)\n                callback.audioAvailable(samples, offset, bytesToWrite)\n                offset += bytesToWrite\n            }\n\n            // 1 means to continue\n            // 0 means to stop\n            return 1\n        }'''
+          new='''        var firstAudio = true\n        val ttsCallback: (FloatArray) -> Int = fun(floatSamples): Int {\n            val samples = floatArrayToByteArray(floatSamples)\n            val maxBufferSize: Int = callback.maxBufferSize\n            // Keep delivery chunks around 120 ms or smaller so Android can start\n            // playback promptly instead of waiting for a large neural buffer.\n            val targetBytes = min(maxBufferSize, maxOf(2048, (tts.sampleRate() * 2 * 0.12f).toInt()))\n            if (firstAudio) {\n                // Tiny priming silence prevents some Android audio paths from\n                // clipping the first phoneme after an idle/resume boundary.\n                firstAudio = false\n                val silence = ByteArray((tts.sampleRate() * 2 * 0.06f).toInt())\n                var sOff = 0\n                while (sOff < silence.size) {\n                    val n = min(targetBytes, silence.size - sOff)\n                    callback.audioAvailable(silence, sOff, n)\n                    sOff += n\n                }\n            }\n            var offset = 0\n            while (offset < samples.size) {\n                val bytesToWrite = min(targetBytes, samples.size - offset)\n                callback.audioAvailable(samples, offset, bytesToWrite)\n                offset += bytesToWrite\n            }\n            return 1\n        }'''
+          if old not in s: raise SystemExit('stream callback marker not found')
+          s=s.replace(old,new,1)
+          oldgen='''            config = GenerationConfig(sid = TtsEngine.speakerId, speed = engineSpeed),'''
+          newgen='''            config = GenerationConfig(\n                sid = speakerIdFor(request.voiceName),\n                speed = engineSpeed,\n                silenceScale = 0.06f,\n            ),'''
+          if oldgen not in s: raise SystemExit('GenerationConfig marker not found')
+          s=s.replace(oldgen,newgen,1)
+          service.write_text(s)
+
+          g=gradle.read_text()
+          g=g.replace('applicationId = "com.k2fsa.sherpa.onnx.tts.engine"', 'applicationId = "com.braseiro.kokoro.ptbr"')
+          g=g.replace('versionCode = 20260910', 'versionCode = 1130801')
+          g=g.replace('versionName = "1.13.8"', 'versionName = "1.13.8-braseiro-ptbr"')
+          needle='''        versionName = "1.13.8-braseiro-ptbr"'''
+          g=g.replace(needle, needle+'\n\n        ndk { abiFilters += listOf("arm64-v8a") }')
+          gradle.write_text(g)
+
+          m=manifest.read_text()
+          m=m.replace('package="com.k2fsa.sherpa.onnx.tts.engine"', 'package="com.k2fsa.sherpa.onnx.tts.engine"')
+          m=m.replace('android:authorities="com.k2fsa.sherpa.onnx.tts.engine.fileprovider"', 'android:authorities="com.braseiro.kokoro.ptbr.fileprovider"')
+          for cls in ['GetSampleText','CheckVoiceData','InstallVoiceData','TtsService','MainActivity']:
+              m=m.replace(f'android:name=".{cls}"', f'android:name="com.k2fsa.sherpa.onnx.tts.engine.{cls}"')
+          manifest.write_text(m)
+
+          st=strings.read_text()
+          st=st.replace('<string name="app_name">SherpaOnnxTtsEngine</string>', '<string name="app_name">Braseiro Kokoro PT-BR</string>')
+          st=st.replace('<string name="app_name">SherpaOnnx TTS Engine</string>', '<string name="app_name">Braseiro Kokoro PT-BR</string>')
+          strings.write_text(st)
+          PY
+
+          grep -q 'maxNumSentences = 2' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsEngine.kt
+          grep -q 'silenceScale = 0.06f' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
+          grep -q 'numThreads = 4' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsEngine.kt
+          grep -q 'ptbr_pf_dora_42' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
+          grep -q 'ptbr_pm_alex_43' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
+          grep -q 'ptbr_pm_santa_44' sherpa/android/SherpaOnnxTtsEngine/app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/TtsService.kt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build arm64 PT-BR TTS engine APK
+        shell: bash
+        working-directory: sherpa/android/SherpaOnnxTtsEngine
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/ENGINE_GRADLE_ASSEMBLE.txt"
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' | sort | head -1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/$APK_NAME"
+
+      - name: Validate engine APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "$APK_NAME" > ENGINE_APK_ZIP_TEST.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK_NAME" | tee ENGINE_APK_BADGING.txt || true
+          unzip -l "$APK_NAME" | grep -q 'lib/arm64-v8a/'
+          unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/model.onnx'
+          unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/voices.bin'
+          unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/tokens.txt'
+          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
+
+      - name: Save patch evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Braseiro Kokoro PT-BR Engine"
+            echo "Base sherpa-onnx: $SHERPA_TAG"
+            echo "maxNumSentences=2"
+            echo "silenceScale=0.06"
+            echo "numThreads=4"
+            echo "prewarm=Olá."
+            echo "streaming=SynthesisCallback.audioAvailable immediate, target <=120ms chunks"
+            echo "voices: pf_dora=42 pm_alex=43 pm_santa=44"
+          } > ENGINE_PROFILE.txt
+          git -C sherpa diff -- android/SherpaOnnxTtsEngine > ENGINE_PATCH.diff || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: braseiro-kokoro-ptbr-engine-1.13.8
+          compression-level: 0
+          retention-days: 7
+          path: |
+            BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk
+            BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8.apk.sha256
+            ENGINE_PROFILE.txt
+            ENGINE_PATCH.diff
+            ENGINE_GRADLE_ASSEMBLE.txt
+            ENGINE_APK_ZIP_TEST.txt
+            ENGINE_APK_BADGING.txt
