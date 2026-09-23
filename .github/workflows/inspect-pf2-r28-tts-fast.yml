@@ -109,3 +109,10 @@ jobs:
           name: pf2-r28-tts-inspection
           retention-days: 3
           path: PF2_R28_TTS_INSPECTION_FAST.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pf2-r28-exact-source
+          compression-level: 0
+          retention-days: 3
+          path: incoming/source.zip
