@@ -1,0 +1,107 @@
+name: Pathfinder 2e 9.0.30 R29 Android TTS Kokoro
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/build-pf2-9.0.30-r29.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: "abea1354de3acdf94fab6fdbad595ce0959b5ec242e5a120a28c96e32f25fb92"
+  FIRE_API: "https://api.firestorage.ai/dev/file"
+  SHARE_ID: "zfWyaHQ5CHe9"
+  FILE_ID: "01a0cd28136a74038e5a3ffd2fa5d91d"
+  APK_NAME: "Braseiro_Pathfinder2e_9.0.30_R29_DEBUG.apk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact R29 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          curl -fsSL -X POST "$FIRE_API/shares/$SHARE_ID/files/$FILE_ID/download" -o /tmp/download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/download.json', encoding='utf-8')).get('downloadUrl') or '')
+          PY
+          )"
+          test -n "$DOWNLOAD_URL"
+          curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 600 "$DOWNLOAD_URL" -o /tmp/source.zip
+          echo "$SOURCE_SHA256  /tmp/source.zip" | sha256sum -c -
+          unzip -q /tmp/source.zip -d work
+          test -f work/gradlew
+          test -f work/version.properties
+          grep -q 'VERSION_NAME=9.0.30' work/version.properties
+          grep -q 'VERSION_CODE=90030' work/version.properties
+
+      - name: Focused TTS gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN=work/android/app/src/main/java/com/braseiro/pathfinder2e/MainActivity.java
+          CHUNK=work/android/app/src/main/java/com/braseiro/pathfinder2e/NarrationChunker.java
+          MANIFEST=work/android/app/src/main/AndroidManifest.xml
+          grep -q 'PREF_ANDROID_TTS_ENGINE' "$MAIN"
+          grep -q 'showAndroidTtsEnginePicker' "$MAIN"
+          grep -q 'showAndroidTtsVoicePicker' "$MAIN"
+          grep -q 'TextToSpeech.QUEUE_ADD' "$MAIN"
+          grep -q 'isLocalNeuralTtsProfile' "$MAIN"
+          grep -q 'androidLocalNeural' "$CHUNK"
+          grep -q 'LOCAL_NEURAL_TARGET_BLOCK = 450' "$CHUNK"
+          grep -q 'android.intent.action.TTS_SERVICE' "$MANIFEST"
+          grep -q 'com.samsung.SMT' "$MANIFEST"
+          grep -q 'com.braseiro.kokoro.ptbr' "$MANIFEST"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        shell: bash
+        working-directory: work
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/PF2_R29_GRADLE_BUILD.log"
+          APK="$(find android/app/build/outputs/apk/debug -type f -name '*.apk' | sort | head -1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/$APK_NAME"
+          sha256sum "$GITHUB_WORKSPACE/$APK_NAME" > "$GITHUB_WORKSPACE/$APK_NAME.sha256"
+
+      - name: Validate APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "$APK_NAME" > PF2_R29_APK_ZIP_TEST.txt
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          if [ -x "$AAPT" ]; then
+            "$AAPT" dump badging "$APK_NAME" | tee PF2_R29_APK_BADGING.txt
+            grep -q "package: name='com.braseiro.pathfinder2e'" PF2_R29_APK_BADGING.txt
+            grep -q "versionCode='90030'" PF2_R29_APK_BADGING.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pathfinder2e-9.0.30-r29
+          compression-level: 0
+          retention-days: 7
+          path: |
+            Braseiro_Pathfinder2e_9.0.30_R29_DEBUG.apk
+            Braseiro_Pathfinder2e_9.0.30_R29_DEBUG.apk.sha256
+            PF2_R29_GRADLE_BUILD.log
+            PF2_R29_APK_ZIP_TEST.txt
+            PF2_R29_APK_BADGING.txt
