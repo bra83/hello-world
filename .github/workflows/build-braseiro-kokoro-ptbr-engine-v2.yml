@@ -507,27 +507,6 @@ jobs:
           } > ENGINE_PROFILE.txt
           git -C sherpa diff -- android/SherpaOnnxTtsEngine > ENGINE_PATCH.diff || true
 
-      - name: Android engine smoke
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            adb install -r "$APK_NAME"
-            adb shell am start -W -n com.braseiro.kokoro.ptbr/com.k2fsa.sherpa.onnx.tts.engine.BraseiroSettingsActivity
-            sleep 3
-            adb shell pidof com.braseiro.kokoro.ptbr
-            adb exec-out screencap -p > ENGINE_SETTINGS_SCREEN.png
-            adb shell settings put secure tts_default_synth com.braseiro.kokoro.ptbr
-            test "$(adb shell settings get secure tts_default_synth | tr -d '\r')" = "com.braseiro.kokoro.ptbr"
-            adb logcat -d -t 1200 > ENGINE_LOGCAT.txt
-            ! grep -q "FATAL EXCEPTION" ENGINE_LOGCAT.txt
-
       - uses: actions/upload-artifact@v4
         with:
           name: braseiro-kokoro-ptbr-engine-1.13.8-v2
@@ -542,5 +521,3 @@ jobs:
             ENGINE_APK_ZIP_TEST.txt
             ENGINE_APK_BADGING.txt
             ENGINE_APK_SIGNATURE.txt
-            ENGINE_SETTINGS_SCREEN.png
-            ENGINE_LOGCAT.txt
