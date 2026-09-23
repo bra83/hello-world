@@ -171,8 +171,8 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/ENGINE_GRADLE_ASSEMBLE.txt"
-          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' | sort | head -1)"
+          ./gradlew assembleDebug --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/ENGINE_GRADLE_ASSEMBLE.txt"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | sort | head -1)"
           test -f "$APK"
           cp "$APK" "$GITHUB_WORKSPACE/$APK_NAME"
 
@@ -181,7 +181,9 @@ jobs:
         run: |
           set -euo pipefail
           unzip -t "$APK_NAME" > ENGINE_APK_ZIP_TEST.txt
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK_NAME" | tee ENGINE_APK_BADGING.txt || true
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/aapt" dump badging "$APK_NAME" | tee ENGINE_APK_BADGING.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK_NAME" | tee ENGINE_APK_SIGNATURE.txt
           unzip -l "$APK_NAME" | grep -q 'lib/arm64-v8a/'
           unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/model.onnx'
           unzip -l "$APK_NAME" | grep -q 'assets/kokoro-pt-br/voices.bin'
@@ -217,3 +219,4 @@ jobs:
             ENGINE_GRADLE_ASSEMBLE.txt
             ENGINE_APK_ZIP_TEST.txt
             ENGINE_APK_BADGING.txt
+            ENGINE_APK_SIGNATURE.txt
