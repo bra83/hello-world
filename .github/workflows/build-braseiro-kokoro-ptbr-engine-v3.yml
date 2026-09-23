@@ -510,20 +510,15 @@ jobs:
               '<application\n        android:allowBackup="true"',
               '<application\n        android:allowBackup="true"\n        android:largeHeap="true"'
           )
-          service_marker='''        <service
-            android:name="com.k2fsa.sherpa.onnx.tts.engine.TtsService"
-            android:enabled="true"'''
-          if service_marker not in m:
-              service_marker='''        <service
-            android:name=".TtsService"
-            android:enabled="true"'''
-          replacement=service_marker.replace(
-              'android:enabled="true"',
-              'android:enabled="true"\n            android:process=":tts"'
+          m, svc_count = __import__('re').subn(
+              r'(<service\s+[^>]*android:name="(?:com\.k2fsa\.sherpa\.onnx\.tts\.engine\.)?TtsService"[^>]*)(>)',
+              lambda match: match.group(1) + ('\n            android:process=":tts"' if 'android:process=' not in match.group(1) else '') + match.group(2),
+              m,
+              count=1,
+              flags=__import__('re').S,
           )
-          if service_marker not in m:
-              raise SystemExit('service manifest marker not found')
-          m=m.replace(service_marker,replacement,1)
+          if svc_count != 1:
+              raise SystemExit('TtsService manifest entry not found')
           manifest.write_text(m)
 
           # Android Settings opens the Activity from tts_engine.xml, not only
