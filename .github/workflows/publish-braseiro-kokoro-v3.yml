@@ -1,0 +1,37 @@
+name: Publish Braseiro Kokoro PT-BR Engine V3
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/publish-braseiro-kokoro-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download validated V3 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh run download 35859460023             --repo "${{ github.repository }}"             --name "braseiro-kokoro-ptbr-engine-1.13.8-v3"             --dir out
+          test -f out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V3.apk
+          cat out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V3.apk.sha256
+
+      - name: Publish V3 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="braseiro-kokoro-ptbr-engine-v3-20260923"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG"               --repo "${{ github.repository }}"               --title "Braseiro Kokoro PT-BR Engine V3"               --notes "V3: serviço TTS em processo separado, carregamento lazy do modelo, pt-BR/por-BRA e tela/configuração desacoplada do processo neural."
+          fi
+          gh release upload "$TAG"             out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V3.apk             out/BRASEIRO_KOKORO_PTBR_ENGINE_1.13.8_V3.apk.sha256             --repo "${{ github.repository }}"             --clobber
