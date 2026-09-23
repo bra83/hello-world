@@ -1,4 +1,4 @@
-name: Cyberpunk RED R5.68 concept structure + R5.68 runtime validation
+name: Cyberpunk RED R5.68 concept structure + R5.67 runtime validation
 
 on:
   push:
@@ -161,6 +161,7 @@ jobs:
           assert 'globalThis.AndroidScene.consumeSharedImage()' in sheets
           assert 'R5.66 — PHYSICAL PHONE INTERACTION FIX' in css
           assert 'R5.68 — CONCEPT STRUCTURE PASS' in css
+          assert 'grid-template-columns:repeat(5,minmax(0,1fr))!important' in css
           assert 'id="homeDashboard"' in html and 'id="homeContinueBtn"' in html
           for text in ['INÍCIO','FICHA','MAPA','MOCHILA','MENU']:
               assert text in html,text
@@ -264,20 +265,21 @@ jobs:
             test ! -f R5_68_SESSION_UI.xml || ! grep -q "Invalid or unexpected token" R5_68_SESSION_UI.xml
             adb exec-out screencap -p > R5_68_SESSION_ANDROID.png
 
-            # Physical-phone regression: Session must accept a vertical gesture without crashing.
-            adb shell input swipe 720 2450 720 900 650
-            sleep 2
-            adb exec-out screencap -p > R5_68_SESSION_SCROLLED_ANDROID.png
-            test -s R5_68_SESSION_SCROLLED_ANDROID.png
-            ! cmp -s R5_68_SESSION_ANDROID.png R5_68_SESSION_SCROLLED_ANDROID.png
-            adb shell input swipe 720 900 720 2450 650
-            sleep 1
+            # INÍCIO is a viewport-sized dashboard by design; scrolling is validated on FICHA.
             adb shell pidof com.braseiro.cyberpunkred
 
             # Ficha
             adb shell input tap 430 2940
             sleep 5
             adb exec-out screencap -p > R5_68_SHEET_ANDROID.png
+            adb shell input swipe 720 2450 720 900 650
+            sleep 2
+            adb exec-out screencap -p > R5_68_SHEET_SCROLLED_ANDROID.png
+            test -s R5_68_SHEET_SCROLLED_ANDROID.png
+            ! cmp -s R5_68_SHEET_ANDROID.png R5_68_SHEET_SCROLLED_ANDROID.png
+            adb shell input swipe 720 900 720 2450 650
+            sleep 1
+            adb shell pidof com.braseiro.cyberpunkred
 
             # Mapa
             adb shell input tap 720 2940
@@ -372,7 +374,7 @@ jobs:
           name: cyberpunk-red-r5.68-visual-review
           path: |
             R5_68_SESSION_ANDROID.png
-            R5_68_SESSION_SCROLLED_ANDROID.png
+            R5_68_SHEET_SCROLLED_ANDROID.png
             R5_68_INVENTORY_ANDROID.png
             R5_68_MAP_ANDROID.png
             R5_68_SHEET_ANDROID.png
@@ -437,7 +439,7 @@ jobs:
           (cd "$PARENT" && zip -qr "$OUT" "$NAME")
           unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_68_ZIP_INTEGRITY.txt"
           sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_68_CONCEPT_STRUCTURE_FIX_CHECKPOINT.zip.sha256"
-          sha256sum R5_68_SESSION_ANDROID.png R5_68_SESSION_SCROLLED_ANDROID.png R5_68_SHEET_ANDROID.png R5_68_MAP_ANDROID.png R5_68_INVENTORY_ANDROID.png R5_68_MORE_ANDROID.png > R5_68_SCREENSHOTS.sha256
+          sha256sum R5_68_SESSION_ANDROID.png R5_68_SHEET_SCROLLED_ANDROID.png R5_68_SHEET_ANDROID.png R5_68_MAP_ANDROID.png R5_68_INVENTORY_ANDROID.png R5_68_MORE_ANDROID.png > R5_68_SCREENSHOTS.sha256
 
       - name: Upload R5.68 verified artifact
         id: artifact
@@ -453,7 +455,7 @@ jobs:
             CYBERPUNK_RED_R5_68_CONCEPT_STRUCTURE_FIX_CHECKPOINT.zip.sha256
             R5_68_ZIP_INTEGRITY.txt
             R5_68_SESSION_ANDROID.png
-            R5_68_SESSION_SCROLLED_ANDROID.png
+            R5_68_SHEET_SCROLLED_ANDROID.png
             R5_68_INVENTORY_ANDROID.png
             R5_68_MAP_ANDROID.png
             R5_68_SHEET_ANDROID.png
