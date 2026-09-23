@@ -477,12 +477,12 @@ jobs:
           # Do not create/load the neural model merely because Android binds the
           # service. Loading occurs lazily on the first real synthesis request.
           s=service.read_text()
-          s, count = re.subn(
+          s, count = __import__('re').subn(
               r'\n\s*override fun onCreate\(\) \{.*?\n\s*private fun langResult',
               '\n\n    override fun onCreate() {\n        super.onCreate()\n        Log.i(TAG, "Braseiro Kokoro service created; model remains lazy")\n    }\n\n    private fun langResult',
               s,
               count=1,
-              flags=re.S,
+              flags=__import__('re').S,
           )
           if count != 1:
               raise SystemExit('V2 service onCreate block not found')
