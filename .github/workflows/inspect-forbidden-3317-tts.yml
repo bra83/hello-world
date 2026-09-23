@@ -1,0 +1,62 @@
+name: Inspect Forbidden Lands 3.3.17 TTS Donor
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/inspect-forbidden-3317-tts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: "ba447e680ea0bb5c38f8694f86451d5f7fa92530aadf0eda9510337f9d9387fb"
+  FIRE_API: "https://api.firestorage.ai/dev/file"
+  SHARE_ID: "-bcS-lbGfiKT"
+  FILE_ID: "01a0cd1c557271ea9edeee7d5afd1774"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact FL 3.3.17 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work donor
+          curl -fsSL -X POST "$FIRE_API/shares/$SHARE_ID/files/$FILE_ID/download" -o /tmp/fl-download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/fl-download.json',encoding='utf-8')).get('downloadUrl') or '')
+          PY
+          )"
+          test -n "$DOWNLOAD_URL"
+          curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 600 "$DOWNLOAD_URL" -o incoming/source.zip
+          echo "$SOURCE_SHA256  incoming/source.zip" | sha256sum -c -
+          unzip -q incoming/source.zip -d work
+
+      - name: Extract donor TTS code
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLUGIN="$(find work -type f -path '*/android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java' | head -1)"
+          test -f "$PLUGIN"
+          cp "$PLUGIN" donor/AndroidTtsPlugin.java
+          REPORT=donor/FORBIDDEN_3317_TTS_UI_CONTEXT.txt
+          : > "$REPORT"
+          grep -RIlE --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist             'NativeAndroidTts|Velocidade Kokoro|TTS local neural|Atualizar engines instaladas|Qualquer engine TTS|listEngines|listVoices|speakSequence|250–650'             work --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' --include='*.html' 2>/dev/null | sort | tee /tmp/ui-files.txt
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            echo "===== FILE: $f =====" >> "$REPORT"
+            grep -nEi -C 12               'NativeAndroidTts|Velocidade Kokoro|TTS local neural|Atualizar engines instaladas|Qualquer engine TTS|listEngines|listVoices|speakSequence|250–650'               "$f" >> "$REPORT" || true
+          done < /tmp/ui-files.txt
+          MANIFEST="$(find work -type f -path '*/android/app/src/main/AndroidManifest.xml' | head -1)"
+          cp "$MANIFEST" donor/AndroidManifest.xml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forbidden-3317-tts-donor
+          retention-days: 3
+          path: donor/
