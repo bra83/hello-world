@@ -19,7 +19,7 @@ env:
   BASE_SHA256: "a47e6c46ac3683d85eacda58f083aef308ddcb737ceb28fd39b42f579ee1577a"
   OVERLAY_URL: "https://firestorage.ai/ja/f/zDP96SWo6g3a"
   OVERLAY_SHA256: "15695b2e64daf6eaaf62986a757f5077db3cadfe17b95dd524540bb8cd047d1f"
-  RELEASE_TAG: "cyberpunk-red-r5.69-concept-structure-fix"
+  RELEASE_TAG: "cyberpunk-red-r5.69-visual-scale-fix"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
   ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
 
@@ -140,7 +140,7 @@ jobs:
           appjs=(app/'app.js').read_text(encoding='utf-8')
 
           # Required persistent shell.
-          for text in ['SESSÃO','MUNDO','MAPA','FICHA','MAIS','MUNDO VIVO','NPCs PRESENTES','AÇÃO LIVRE','BIBLIOTECA','STREET STORIES','VEÍCULO']:
+          for text in ['INÍCIO','MUNDO','MAPA','FICHA','MENU','MUNDO VIVO','NPCs PRESENTES','AÇÃO LIVRE','BIBLIOTECA','STREET STORIES','VEÍCULO']:
               assert text in html,text
           for id_ in ['sessionWorldTime','sceneNpcList','sceneIllustration','tableNarrative','sessionRecommended','sessionActionInput','sessionActionSend','sessionListenBtn','sessionAndroidListenBtn','sessionLibraryBtn','npcVisualSheet','moreSheet']:
               assert f'id="{id_}"' in html,id_
