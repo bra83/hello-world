@@ -252,6 +252,8 @@ jobs:
             adb shell input swipe 720 2450 720 900 650
             sleep 2
             adb exec-out screencap -p > R5_66_SESSION_SCROLLED_ANDROID.png
+            test -s R5_66_SESSION_SCROLLED_ANDROID.png
+            ! cmp -s R5_66_SESSION_ANDROID.png R5_66_SESSION_SCROLLED_ANDROID.png
             adb shell input swipe 720 900 720 2450 650
             sleep 1
             adb shell pidof com.braseiro.cyberpunkred
@@ -351,7 +353,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cyberpunk-red-r5.65-visual-review
+          name: cyberpunk-red-r5.66-visual-review
           path: |
             R5_66_SESSION_ANDROID.png
             R5_66_SESSION_SCROLLED_ANDROID.png
@@ -423,7 +425,7 @@ jobs:
         id: artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cyberpunk-red-r5.65-phone-runtime-fix
+          name: cyberpunk-red-r5.66-phone-runtime-fix
           path: |
             BRASEIRO-CYBERPUNK-RED-R5.66-DEBUG.apk
             BRASEIRO-CYBERPUNK-RED-R5.66-DEBUG.apk.sha256
