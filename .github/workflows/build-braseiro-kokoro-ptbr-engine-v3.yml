@@ -490,16 +490,14 @@ jobs:
           # This engine is PT-BR only. Once the user explicitly selects it,
           # synthesis must not be rejected because an OEM sent the previous
           # system locale in SynthesisRequest while switching engines.
-          old='''                  if (langResult(request.language, request.country) == TextToSpeech.LANG_NOT_SUPPORTED) {
-                      callback.error()
-                      return
-                  }
-
-                  val text = request.charSequenceText?.toString().orEmpty()'''
-          new='''                  val text = request.charSequenceText?.toString().orEmpty()'''
-          if old not in s:
-              raise SystemExit('language-reject marker not found')
-          s=s.replace(old,new,1)
+          s, lang_count = __import__('re').subn(
+              r'\n\s*(?:val available = langResult\(request\.language, request\.country\)\n\s*)?if \((?:available|langResult\(request\.language, request\.country\)) == TextToSpeech\.LANG_NOT_SUPPORTED\) \{\n\s*callback\.error\(\)\n\s*return\n\s*\}\n',
+              '\n',
+              s,
+              count=1,
+          )
+          if lang_count != 1:
+              raise SystemExit('language-reject block not found')
 
           # Accept both our named voices and the BCP-47/default aliases some
           # Android builds probe while switching engines.
