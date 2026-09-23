@@ -86,6 +86,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           root=Path('sherpa/android/SherpaOnnxTtsEngine')
           src=root/'app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine'
@@ -476,21 +477,15 @@ jobs:
           # Do not create/load the neural model merely because Android binds the
           # service. Loading occurs lazily on the first real synthesis request.
           s=service.read_text()
-          old='''              override fun onCreate() {
-                  super.onCreate()
-                  Log.i(TAG, "Braseiro Kokoro service created")
-                  Thread({
-                      runCatching { TtsEngine.createTts(applicationContext) }
-                          .onFailure { Log.e(TAG, "Background prewarm failed", it) }
-                  }, "braseiro-kokoro-prewarm").start()
-              }'''
-          new='''              override fun onCreate() {
-                  super.onCreate()
-                  Log.i(TAG, "Braseiro Kokoro service created; model remains lazy")
-              }'''
-          if old not in s:
-              raise SystemExit('V2 service onCreate marker not found')
-          s=s.replace(old,new,1)
+          s, count = re.subn(
+              r'\n\s*override fun onCreate\(\) \{.*?\n\s*private fun langResult',
+              '\n\n    override fun onCreate() {\n        super.onCreate()\n        Log.i(TAG, "Braseiro Kokoro service created; model remains lazy")\n    }\n\n    private fun langResult',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit('V2 service onCreate block not found')
 
           # This engine is PT-BR only. Once the user explicitly selects it,
           # synthesis must not be rejected because an OEM sent the previous
