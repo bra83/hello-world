@@ -101,7 +101,7 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Apply R5.67 physical phone runtime fix
+      - name: Apply R5.67 TTS pipeline on R5.66 phone base
         shell: bash
         env:
           ROOT: ${{ steps.src.outputs.root }}
@@ -112,7 +112,7 @@ jobs:
           grep -F 'versionCode = 4167' "$ROOT/app/build.gradle.kts"
           grep -F 'versionName = "4.1.67"' "$ROOT/app/build.gradle.kts"
           grep -F 'app.js?build=4167' "$ROOT/app/src/main/assets/web/app/index.html"
-          grep -F 'R5.67 — PHYSICAL PHONE INTERACTION FIX' "$ROOT/app/src/main/assets/web/app/interface_v2.css"
+          grep -F 'R5.66 — PHYSICAL PHONE INTERACTION FIX' "$ROOT/app/src/main/assets/web/app/interface_v2.css"
 
       - name: Interface architecture gates
         shell: bash
@@ -157,7 +157,7 @@ jobs:
           assert "position:fixed!important" in css and "bottom-nav" in css
           assert 'Abrir configuração Gemini' in html
           assert 'globalThis.AndroidScene.consumeSharedImage()' in sheets
-          assert 'R5.67 — PHYSICAL PHONE INTERACTION FIX' in css
+          assert 'R5.66 — PHYSICAL PHONE INTERACTION FIX' in css
           assert 'touch-action:pan-y!important' in css
           tts=(root/'app/src/main/java/com/braseiro/cyberpunkred/GeminiTtsService.kt').read_text(encoding='utf-8')
           assert 'single-track-prefetch-r567' in tts
