@@ -1192,7 +1192,7 @@ jobs:
               "        androidTtsEnginePackage: migratedEngine,"
           )
           st = re.sub(
-              r"        androidTtsLocalRate: Number\(stored\.androidTtsLocalPipelineVersion \|\| 0\) < 3\n          \? 0\.85\n          : Math\.max\(0\.5, Math\.min\(1\.2, Number\(stored\.androidTtsLocalRate \|\| 0\.85\)\)\),\n        androidTtsLocalPipelineVersion: 3,\n        androidTtsProfile: stored\.androidTtsProfile === 'local-neural' \? 'local-neural' : 'standard',",
+              r"        androidTtsLocalRate: Number\(stored\.androidTtsLocalPipelineVersion \|\| 0\) < 3\n          \? 0\.85\n          : Math\.max\(0\.5, Math\.min\(1\.2, Number\(stored\.androidTtsLocalRate \|\| 0\.85\)\)\),\n        androidTtsLocalPipelineVersion: 4,\n        androidTtsProfile: stored\.androidTtsProfile === 'local-neural' \? 'local-neural' : 'standard'," ,
               """        androidTtsLocalRate: Number(stored.androidTtsLocalPipelineVersion || 0) < 4
                     ? 1.0
                     : Math.max(0.5, Math.min(1.2, Number(stored.androidTtsLocalRate || 1.0))),
