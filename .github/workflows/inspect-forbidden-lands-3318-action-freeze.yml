@@ -105,6 +105,8 @@ jobs:
             'work/src/services/audioEngineV2.ts',
             'work/src/store/useAppStore.ts',
             'work/src/services/NarrativeDirectorService.ts',
+            'work/src/services/MasterContextBuilder.ts',
+            'work/src/services/MasterOrchestratorService.ts',
           ]
           patterns=[
             r'action', r'aç[aã]o', r'suggest', r'preset', r'quick',
