@@ -37,11 +37,8 @@ jobs:
           echo "$SOURCE_SHA256  incoming/$SOURCE_NAME" | sha256sum -c -
           unzip -q "incoming/$SOURCE_NAME" -d work
 
-      - name: Print tagged TTS sources
+      - name: Print runtime 3319 verifier
         shell: bash
         run: |
           set -euo pipefail
-          awk '{printf "AE:%05d:%s\\n", NR, $0}' work/src/services/audioEngineV2.ts
-          awk '{printf "SS:%05d:%s\\n", NR, $0}' work/src/screens/SettingsScreenV2.tsx
-          awk '{printf "ST:%05d:%s\\n", NR, $0}' work/src/store/useAppStore.ts
-          awk '{printf "AT:%05d:%s\\n", NR, $0}' work/android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          cat work/scripts/verify-runtime-3319.mjs
