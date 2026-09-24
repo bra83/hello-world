@@ -37,23 +37,11 @@ jobs:
           echo "$SOURCE_SHA256  incoming/$SOURCE_NAME" | sha256sum -c -
           unzip -q "incoming/$SOURCE_NAME" -d work
 
-      - name: Print exact TTS sources
+      - name: Print tagged TTS sources
         shell: bash
         run: |
           set -euo pipefail
-          echo "===== AndroidTtsPlugin 1-260 ====="
-          nl -ba work/android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java | sed -n '1,260p'
-          echo "===== AndroidTtsPlugin 261-540 ====="
-          nl -ba work/android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java | sed -n '261,540p'
-          echo "===== AndroidTtsPlugin 541-860 ====="
-          nl -ba work/android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java | sed -n '541,860p'
-          echo "===== audioEngineV2 1-260 ====="
-          nl -ba work/src/services/audioEngineV2.ts | sed -n '1,260p'
-          echo "===== audioEngineV2 261-560 ====="
-          nl -ba work/src/services/audioEngineV2.ts | sed -n '261,560p'
-          echo "===== SettingsScreenV2 1-380 ====="
-          nl -ba work/src/screens/SettingsScreenV2.tsx | sed -n '1,380p'
-          echo "===== store settings ====="
-          nl -ba work/src/store/useAppStore.ts | sed -n '1,140p'
-          echo "===== settings type ====="
-          nl -ba work/src/types.ts | sed -n '620,690p'
+          awk '{printf "AE:%05d:%s\\n", NR, $0}' work/src/services/audioEngineV2.ts
+          awk '{printf "SS:%05d:%s\\n", NR, $0}' work/src/screens/SettingsScreenV2.tsx
+          awk '{printf "ST:%05d:%s\\n", NR, $0}' work/src/store/useAppStore.ts
+          awk '{printf "AT:%05d:%s\\n", NR, $0}' work/android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
