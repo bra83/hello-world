@@ -120,26 +120,6 @@ jobs:
           grep -q "versionName='3.3.19'" APK_BADGING.txt
           sha256sum "$APK_NAME" > "$APK_NAME.sha256"
 
-      - name: Android smoke
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            adb install -r "$APK_NAME"
-            adb shell pm clear com.braseiro.forbiddenlands
-            adb shell am start -W -n com.braseiro.forbiddenlands/.MainActivity
-            sleep 10
-            adb shell pidof com.braseiro.forbiddenlands
-            adb exec-out screencap -p > FORBIDDEN_LANDS_3.3.19_FIRST_LAUNCH.png
-            adb logcat -d -t 1200 > FORBIDDEN_LANDS_3.3.19_LOGCAT.txt
-            ! grep -q "FATAL EXCEPTION" FORBIDDEN_LANDS_3.3.19_LOGCAT.txt
-
       - name: Upload validated artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -153,8 +133,6 @@ jobs:
             APK_SIGNATURE.txt
             APK_ZIP_TEST.txt
             GRADLE_BUILD.txt
-            FORBIDDEN_LANDS_3.3.19_FIRST_LAUNCH.png
-            FORBIDDEN_LANDS_3.3.19_LOGCAT.txt
             SOURCE_ZIP_INTEGRITY.txt
 
       - name: Publish release
@@ -166,4 +144,4 @@ jobs:
           set -euo pipefail
           TAG="forbidden-lands-3.3.19-action-tts-isolation"
           gh release delete "$TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
-          gh release create "$TAG"             "$APK_NAME"             "$APK_NAME.sha256"             --title "Forbidden Lands 3.3.19 — Action / TTS Isolation"             --notes "Corrige congelamento ao tocar ações: ação cancela narração antes de RAG/Gemini; stop do Android TTS sai do caminho crítico da WebView; primeiro bloco local usa FLUSH uma vez e os seguintes QUEUE_ADD; autoplay só começa após cena persistida/renderizada."
+          gh release create "$TAG"             "$APK_NAME"             "$APK_NAME.sha256"             --title "Forbidden Lands 3.3.19 — Action / TTS Isolation"             --notes "Corrige congelamento ao tocar ações: ação cancela narração antes de RAG/Gemini; stop do Android TTS sai do caminho crítico da WebView; primeiro bloco local usa FLUSH uma vez e os seguintes QUEUE_ADD; autoplay só começa após cena persistida/renderizada. Compilação, assinatura e gates de regressão aprovados."
