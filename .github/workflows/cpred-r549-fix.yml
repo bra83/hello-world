@@ -1,4 +1,4 @@
-name: Cyberpunk RED R5.70 visual composition + R5.67 runtime validation
+name: Cyberpunk RED R5.71 typography icons + R5.67 runtime validation
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - "cyberpunk-red/patches/r568_concept_structure_fix.py"
       - "cyberpunk-red/patches/r569_visual_scale_fix.py"
       - "cyberpunk-red/patches/r570_visual_composition_fix.py"
+      - "cyberpunk-red/patches/r571_typography_icon_fix.py"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +21,7 @@ env:
   BASE_SHA256: "a47e6c46ac3683d85eacda58f083aef308ddcb737ceb28fd39b42f579ee1577a"
   OVERLAY_URL: "https://firestorage.ai/ja/f/zDP96SWo6g3a"
   OVERLAY_SHA256: "15695b2e64daf6eaaf62986a757f5077db3cadfe17b95dd524540bb8cd047d1f"
-  RELEASE_TAG: "cyberpunk-red-r5.70-visual-composition-fix"
+  RELEASE_TAG: "cyberpunk-red-r5.71-typography-icon-fix"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
   ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
 
@@ -104,7 +105,7 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Apply R5.70 TTS pipeline on R5.66 phone base
+      - name: Apply R5.71 TTS pipeline on R5.66 phone base
         shell: bash
         env:
           ROOT: ${{ steps.src.outputs.root }}
@@ -115,9 +116,10 @@ jobs:
           python3 cyberpunk-red/patches/r568_concept_structure_fix.py "$ROOT"
           python3 cyberpunk-red/patches/r569_visual_scale_fix.py "$ROOT"
           python3 cyberpunk-red/patches/r570_visual_composition_fix.py "$ROOT"
-          grep -F 'versionCode = 4170' "$ROOT/app/build.gradle.kts"
-          grep -F 'versionName = "4.1.70"' "$ROOT/app/build.gradle.kts"
-          grep -F 'app.js?build=4170' "$ROOT/app/src/main/assets/web/app/index.html"
+          python3 cyberpunk-red/patches/r571_typography_icon_fix.py "$ROOT"
+          grep -F 'versionCode = 4171' "$ROOT/app/build.gradle.kts"
+          grep -F 'versionName = "4.1.71"' "$ROOT/app/build.gradle.kts"
+          grep -F 'app.js?build=4171' "$ROOT/app/src/main/assets/web/app/index.html"
           grep -F 'R5.66 — PHYSICAL PHONE INTERACTION FIX' "$ROOT/app/src/main/assets/web/app/interface_v2.css"
 
       - name: Interface architecture gates
@@ -148,7 +150,7 @@ jobs:
               assert f'id="{id_}"' in html,id_
           assert 'bottom-nav' in html
           assert 'interface_v2.css' in html
-          assert 'app.js?build=4170' in html
+          assert 'app.js?build=4171' in html
           assert 'data-tab="stories"' in html and 'id="tab-stories"' in html
           assert 'data-tab="vehicle"' in html and 'id="tab-vehicle"' in html
           assert 'data-sheet-anchor="general"' in html and 'data-sheet-anchor="bio"' in html
@@ -167,6 +169,7 @@ jobs:
           assert 'R5.68 — CONCEPT STRUCTURE PASS' in css
           assert 'R5.69 — VISUAL SCALE AND DENSITY PASS' in css
           assert 'R5.70 — CONCEPT COMPOSITION PASS' in css
+          assert 'R5.71 — TYPOGRAPHY AND ICON PASS' in css
           assert 'grid-template-columns:repeat(5,minmax(0,1fr))!important' in css
           assert 'id="homeDashboard"' in html and 'id="homeContinueBtn"' in html
           for text in ['INÍCIO','FICHA','MAPA','MOCHILA','MENU']:
@@ -202,7 +205,7 @@ jobs:
               assert len(rows)==n,(fn,len(rows),n);total+=len(rows)
               for x in rows: assert (app/x['asset']).is_file(),(fn,x.get('name'),x.get('asset'))
           assert total==155
-          print('R5_70_UI_GATE_PASS core_items=123 weapons=155 unique_core_assets=123')
+          print('R5_71_UI_GATE_PASS core_items=123 weapons=155 unique_core_assets=123')
           PY
 
       - uses: actions/setup-java@v4
@@ -221,7 +224,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile R5.70
+      - name: Compile R5.71
         working-directory: ${{ steps.src.outputs.root }}
         shell: bash
         run: |
@@ -231,13 +234,13 @@ jobs:
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
           APK="$(find app/build/outputs/apk/debug -name '*.apk' | sort | head -1)"
           test -f "$APK"
-          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk"
-          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk" >/dev/null
+          cp "$APK" "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk"
+          unzip -t "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk" >/dev/null
           BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R567.txt"
-          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R567.txt"
-          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4170' versionName='4.1.70'" "$GITHUB_WORKSPACE/APK_BADGING_R567.txt"
-          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk.sha256"
+          "$BT/aapt" dump badging "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_BADGING_R567.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk" | tee "$GITHUB_WORKSPACE/APK_SIGNATURE_R567.txt"
+          grep -q "package: name='com.braseiro.cyberpunkred' versionCode='4171' versionName='4.1.71'" "$GITHUB_WORKSPACE/APK_BADGING_R567.txt"
+          sha256sum "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk" > "$GITHUB_WORKSPACE/BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk.sha256"
 
       - name: Enable KVM
         shell: bash
@@ -259,7 +262,7 @@ jobs:
             set -eu
             adb shell wm size 1440x3088
             adb shell wm density 560
-            adb install -r BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk
+            adb install -r BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk
             # Pixel Launcher occasionally ANRs on the headless emulator and steals all taps.
             adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
             adb shell am force-stop com.braseiro.cyberpunkred
@@ -270,10 +273,10 @@ jobs:
             adb shell pidof com.braseiro.cyberpunkred
 
             adb shell uiautomator dump /sdcard/session.xml >/dev/null || true
-            adb pull /sdcard/session.xml R5_70_SESSION_UI.xml >/dev/null || true
-            test ! -f R5_70_SESSION_UI.xml || ! grep -q "INTERFACE NÃO INICIALIZOU" R5_70_SESSION_UI.xml
-            test ! -f R5_70_SESSION_UI.xml || ! grep -q "Invalid or unexpected token" R5_70_SESSION_UI.xml
-            adb exec-out screencap -p > R5_70_SESSION_ANDROID.png
+            adb pull /sdcard/session.xml R5_71_SESSION_UI.xml >/dev/null || true
+            test ! -f R5_71_SESSION_UI.xml || ! grep -q "INTERFACE NÃO INICIALIZOU" R5_71_SESSION_UI.xml
+            test ! -f R5_71_SESSION_UI.xml || ! grep -q "Invalid or unexpected token" R5_71_SESSION_UI.xml
+            adb exec-out screencap -p > R5_71_SESSION_ANDROID.png
 
             # INÍCIO is a viewport-sized dashboard by design; scrolling is validated on FICHA.
             adb shell pidof com.braseiro.cyberpunkred
@@ -281,12 +284,12 @@ jobs:
             # Ficha
             adb shell input tap 430 2940
             sleep 5
-            adb exec-out screencap -p > R5_70_SHEET_ANDROID.png
+            adb exec-out screencap -p > R5_71_SHEET_ANDROID.png
             adb shell input swipe 720 2450 720 900 650
             sleep 2
-            adb exec-out screencap -p > R5_70_SHEET_SCROLLED_ANDROID.png
-            test -s R5_70_SHEET_SCROLLED_ANDROID.png
-            ! cmp -s R5_70_SHEET_ANDROID.png R5_70_SHEET_SCROLLED_ANDROID.png
+            adb exec-out screencap -p > R5_71_SHEET_SCROLLED_ANDROID.png
+            test -s R5_71_SHEET_SCROLLED_ANDROID.png
+            ! cmp -s R5_71_SHEET_ANDROID.png R5_71_SHEET_SCROLLED_ANDROID.png
             adb shell input swipe 720 900 720 2450 650
             sleep 1
             adb shell pidof com.braseiro.cyberpunkred
@@ -294,24 +297,24 @@ jobs:
             # Mapa
             adb shell input tap 720 2940
             sleep 6
-            adb exec-out screencap -p > R5_70_MAP_ANDROID.png
+            adb exec-out screencap -p > R5_71_MAP_ANDROID.png
 
             # Mochila
             adb shell input tap 1010 2940
             sleep 5
-            adb exec-out screencap -p > R5_70_INVENTORY_ANDROID.png
+            adb exec-out screencap -p > R5_71_INVENTORY_ANDROID.png
 
             # Menu
             adb shell input tap 1295 2940
             sleep 4
-            adb exec-out screencap -p > R5_70_MORE_ANDROID.png
+            adb exec-out screencap -p > R5_71_MORE_ANDROID.png
 
-            for f in R5_70_SESSION_ANDROID.png R5_70_SHEET_ANDROID.png R5_70_MAP_ANDROID.png R5_70_INVENTORY_ANDROID.png R5_70_MORE_ANDROID.png; do test -s "$f"; done
+            for f in R5_71_SESSION_ANDROID.png R5_71_SHEET_ANDROID.png R5_71_MAP_ANDROID.png R5_71_INVENTORY_ANDROID.png R5_71_MORE_ANDROID.png; do test -s "$f"; done
 
-            adb logcat -d -t 1500 > R5_70_LOGCAT.txt
-            ! grep -q "Invalid or unexpected token" R5_70_LOGCAT.txt
-            ! grep -q "\[CPRED_BOOT\]" R5_70_LOGCAT.txt
-            ! grep -q "FATAL EXCEPTION" R5_70_LOGCAT.txt
+            adb logcat -d -t 1500 > R5_71_LOGCAT.txt
+            ! grep -q "Invalid or unexpected token" R5_71_LOGCAT.txt
+            ! grep -q "\[CPRED_BOOT\]" R5_71_LOGCAT.txt
+            ! grep -q "FATAL EXCEPTION" R5_71_LOGCAT.txt
 
       - name: Build visual overlay and diff review
         shell: bash
@@ -326,10 +329,10 @@ jobs:
           root=pathlib.Path(sys.argv[1])
           refs=root/'visual_reference'
           pairs=[
-            ('SESSÃO',refs/'home.png',pathlib.Path('R5_70_SESSION_ANDROID.png')),
-            ('FICHA',refs/'sheet.png',pathlib.Path('R5_70_SHEET_ANDROID.png')),
-            ('MAPA',refs/'map.png',pathlib.Path('R5_70_MAP_ANDROID.png')),
-            ('MAIS',refs/'menu.png',pathlib.Path('R5_70_MORE_ANDROID.png')),
+            ('SESSÃO',refs/'home.png',pathlib.Path('R5_71_SESSION_ANDROID.png')),
+            ('FICHA',refs/'sheet.png',pathlib.Path('R5_71_SHEET_ANDROID.png')),
+            ('MAPA',refs/'map.png',pathlib.Path('R5_71_MAP_ANDROID.png')),
+            ('MAIS',refs/'menu.png',pathlib.Path('R5_71_MORE_ANDROID.png')),
           ]
           rows=[]
           metrics=[]
@@ -352,16 +355,16 @@ jobs:
           y=0
           for r in rows:
               canvas.paste(r,(0,y));y+=r.height
-          canvas.save('R5_70_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png')
-          pathlib.Path('R5_70_VISUAL_METRICS.txt').write_text('\n'.join(f'{k}_RMSE={v:.3f}' for k,v in metrics)+'\n',encoding='utf-8')
+          canvas.save('R5_71_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png')
+          pathlib.Path('R5_71_VISUAL_METRICS.txt').write_text('\n'.join(f'{k}_RMSE={v:.3f}' for k,v in metrics)+'\n',encoding='utf-8')
 
           # Explicit anti-regression gate across every primary screen.
           palette_files=[
-            ('SESSAO','R5_70_SESSION_ANDROID.png'),
-            ('MOCHILA','R5_70_INVENTORY_ANDROID.png'),
-            ('MAPA','R5_70_MAP_ANDROID.png'),
-            ('FICHA','R5_70_SHEET_ANDROID.png'),
-            ('MAIS','R5_70_MORE_ANDROID.png'),
+            ('SESSAO','R5_71_SESSION_ANDROID.png'),
+            ('MOCHILA','R5_71_INVENTORY_ANDROID.png'),
+            ('MAPA','R5_71_MAP_ANDROID.png'),
+            ('FICHA','R5_71_SHEET_ANDROID.png'),
+            ('MAIS','R5_71_MORE_ANDROID.png'),
           ]
           ratios=[]
           for label,fn in palette_files:
@@ -370,30 +373,30 @@ jobs:
               hot=sum(1 for r,g,b in pix if r>190 and b>105 and g<125)
               ratios.append((label,hot/max(1,len(pix))))
           threshold=0.005
-          pathlib.Path('R5_70_PALETTE_GATE.txt').write_text(
+          pathlib.Path('R5_71_PALETTE_GATE.txt').write_text(
               '\n'.join(f'{label}_hot_pink_ratio={ratio:.6f}' for label,ratio in ratios)+f'\nthreshold={threshold:.6f}\n',
               encoding='utf-8'
           )
           print('VISUAL_REVIEW_READY',metrics,'palette',ratios)
           PY
 
-      - name: Upload R5.70 visual evidence
+      - name: Upload R5.71 visual evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cyberpunk-red-r5.70-visual-review
+          name: cyberpunk-red-r5.71-visual-review
           path: |
-            R5_70_SESSION_ANDROID.png
-            R5_70_SHEET_SCROLLED_ANDROID.png
-            R5_70_INVENTORY_ANDROID.png
-            R5_70_MAP_ANDROID.png
-            R5_70_SHEET_ANDROID.png
-            R5_70_MORE_ANDROID.png
-            R5_70_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png
-            R5_70_VISUAL_METRICS.txt
-            R5_70_PALETTE_GATE.txt
-            R5_70_LOGCAT.txt
-            R5_70_SESSION_UI.xml
+            R5_71_SESSION_ANDROID.png
+            R5_71_SHEET_SCROLLED_ANDROID.png
+            R5_71_INVENTORY_ANDROID.png
+            R5_71_MAP_ANDROID.png
+            R5_71_SHEET_ANDROID.png
+            R5_71_MORE_ANDROID.png
+            R5_71_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png
+            R5_71_VISUAL_METRICS.txt
+            R5_71_PALETTE_GATE.txt
+            R5_71_LOGCAT.txt
+            R5_71_SESSION_UI.xml
           if-no-files-found: warn
           retention-days: 30
           compression-level: 0
@@ -404,7 +407,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import pathlib
-          p=pathlib.Path('R5_70_PALETTE_GATE.txt')
+          p=pathlib.Path('R5_71_PALETTE_GATE.txt')
           vals={}
           for line in p.read_text().splitlines():
               if '=' in line:
@@ -416,7 +419,7 @@ jobs:
               raise SystemExit(f'HOT_PINK_REGRESSION {bad}')
           PY
 
-      - name: Package R5.70 checkpoint
+      - name: Package R5.71 checkpoint
         shell: bash
         env:
           PROJECT: ${{ steps.src.outputs.project }}
@@ -425,8 +428,8 @@ jobs:
           set -euo pipefail
           rm -f "$ROOT/app/src/main/assets/web/app/preview_nojs.html"
           mkdir -p "$PROJECT/project_docs"
-          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_70_VISUAL_COMPOSITION_FIX.md" <<'EOF'
-          # Cyberpunk RED R5.70 — Physical Phone Runtime Fix
+          cat > "$PROJECT/project_docs/HANDOFF_CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX.md" <<'EOF'
+          # Cyberpunk RED R5.71 — Physical Phone Runtime Fix
           Persistent bottom navigation: SESSÃO | MUNDO | MAPA | FICHA | MAIS.
           Session order: Mundo Vivo -> NPCs presentes -> imagem da cena -> Mestre -> estado contextual -> ações sugeridas -> ação livre -> imagem/TTS/Biblioteca.
           Mundo Vivo is a dedicated screen.
@@ -440,42 +443,42 @@ jobs:
           Runtime weapon asset coverage remains 155/155.
           R5.66 phone fixes retained: real vertical scrolling, Gemini status opens configuration, shared scene-image bridge call is bound correctly.
           R5.67 TTS fixes: single AudioTrack across the narration, short first chunk, next-chunk prefetch, network cancellation on stop/new narration, final-buffer drain before release.
-          R5.68 concept structure retained: INÍCIO/FICHA/MAPA/MOCHILA/MENU, concept dashboard, compact map chrome and grouped menu without removing advanced surfaces.\n          R5.69 visual scale retained: larger cards, typography, icons and spacing on INÍCIO/MENU/FICHA/MOCHILA while preserving mechanics and canonical map.\n          R5.70 composition: two-line home brand, target-size cards/menu, relocated sheet vitals below attributes, stronger canonical-map presentation.
-          Android version: 4.1.70 / 4170.
+          R5.68 concept structure retained: INÍCIO/FICHA/MAPA/MOCHILA/MENU, concept dashboard, compact map chrome and grouped menu without removing advanced surfaces.\n          R5.69 visual scale retained: larger cards, typography, icons and spacing on INÍCIO/MENU/FICHA/MOCHILA while preserving mechanics and canonical map.\n          R5.70 composition retained: two-line home brand, target-size cards/menu, relocated sheet vitals below attributes, stronger canonical-map presentation.\n          R5.71 typography/icons: stronger text hierarchy and icon weight on INÍCIO/FICHA/MAPA/MOCHILA/MENU without mechanical changes.
+          Android version: 4.1.71 / 4171.
           EOF
           rm -rf "$ROOT/.gradle" "$ROOT/build" "$ROOT/app/build"
-          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_70_VISUAL_COMPOSITION_FIX_CHECKPOINT.zip"
+          OUT="$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX_CHECKPOINT.zip"
           PARENT="$(dirname "$PROJECT")";NAME="$(basename "$PROJECT")"
           (cd "$PARENT" && zip -qr "$OUT" "$NAME")
-          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_70_ZIP_INTEGRITY.txt"
-          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_70_VISUAL_COMPOSITION_FIX_CHECKPOINT.zip.sha256"
-          sha256sum R5_70_SESSION_ANDROID.png R5_70_SHEET_SCROLLED_ANDROID.png R5_70_SHEET_ANDROID.png R5_70_MAP_ANDROID.png R5_70_INVENTORY_ANDROID.png R5_70_MORE_ANDROID.png > R5_70_SCREENSHOTS.sha256
+          unzip -t "$OUT" > "$GITHUB_WORKSPACE/R5_71_ZIP_INTEGRITY.txt"
+          sha256sum "$OUT" > "$GITHUB_WORKSPACE/CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX_CHECKPOINT.zip.sha256"
+          sha256sum R5_71_SESSION_ANDROID.png R5_71_SHEET_SCROLLED_ANDROID.png R5_71_SHEET_ANDROID.png R5_71_MAP_ANDROID.png R5_71_INVENTORY_ANDROID.png R5_71_MORE_ANDROID.png > R5_71_SCREENSHOTS.sha256
 
-      - name: Upload R5.70 verified artifact
+      - name: Upload R5.71 verified artifact
         id: artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cyberpunk-red-r5.70-visual-composition-fix
+          name: cyberpunk-red-r5.71-typography-icon-fix
           path: |
-            BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk
-            BRASEIRO-CYBERPUNK-RED-R5.70-DEBUG.apk.sha256
+            BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk
+            BRASEIRO-CYBERPUNK-RED-R5.71-DEBUG.apk.sha256
             APK_BADGING_R567.txt
             APK_SIGNATURE_R567.txt
-            CYBERPUNK_RED_R5_70_VISUAL_COMPOSITION_FIX_CHECKPOINT.zip
-            CYBERPUNK_RED_R5_70_VISUAL_COMPOSITION_FIX_CHECKPOINT.zip.sha256
-            R5_70_ZIP_INTEGRITY.txt
-            R5_70_SESSION_ANDROID.png
-            R5_70_SHEET_SCROLLED_ANDROID.png
-            R5_70_INVENTORY_ANDROID.png
-            R5_70_MAP_ANDROID.png
-            R5_70_SHEET_ANDROID.png
-            R5_70_MORE_ANDROID.png
-            R5_70_SCREENSHOTS.sha256
-            R5_70_LOGCAT.txt
-            R5_70_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png
-            R5_70_VISUAL_METRICS.txt
-            R5_70_PALETTE_GATE.txt
-            R5_70_SESSION_UI.xml
+            CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX_CHECKPOINT.zip
+            CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX_CHECKPOINT.zip.sha256
+            R5_71_ZIP_INTEGRITY.txt
+            R5_71_SESSION_ANDROID.png
+            R5_71_SHEET_SCROLLED_ANDROID.png
+            R5_71_INVENTORY_ANDROID.png
+            R5_71_MAP_ANDROID.png
+            R5_71_SHEET_ANDROID.png
+            R5_71_MORE_ANDROID.png
+            R5_71_SCREENSHOTS.sha256
+            R5_71_LOGCAT.txt
+            R5_71_VISUAL_REVIEW_TARGET_ACTUAL_DIFF.png
+            R5_71_VISUAL_METRICS.txt
+            R5_71_PALETTE_GATE.txt
+            R5_71_SESSION_UI.xml
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -484,4 +487,4 @@ jobs:
         shell: bash
         run: |
           echo "RELEASE_BLOCKED_BY_USER_VISUAL_GATE=1"
-          echo "R5.70 is artifact-only. No GitHub Release until target/actual/diff is visually approved."
+          echo "R5.71 is artifact-only. No GitHub Release until target/actual/diff is visually approved."
