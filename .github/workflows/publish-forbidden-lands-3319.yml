@@ -1,0 +1,37 @@
+name: Publish Forbidden Lands 3.3.19 Action Freeze Hotfix
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/publish-forbidden-lands-3319.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download validated 3.3.19 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh run download 35969821408             --repo "${{ github.repository }}"             --name "forbidden-lands-3.3.19-validated"             --dir out
+          test -f out/BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk
+          cat out/BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk.sha256
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="forbidden-lands-3.3.19-action-freeze-hotfix"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag --repo "${{ github.repository }}"
+          fi
+          gh release create "$TAG"             out/BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk             out/BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk.sha256             --repo "${{ github.repository }}"             --title "Forbidden Lands 3.3.19 — Action Freeze Hotfix"             --notes "Corrige travamento ao tocar ações: interrompe TTS atual antes da nova ação; remove análise Vision bloqueante de destino sem terreno confirmado; limita montagem pesada de contexto a 5 s com fallback conservador."
