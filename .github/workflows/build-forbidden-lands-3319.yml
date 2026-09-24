@@ -1,4 +1,4 @@
-name: Forbidden Lands 3.3.19 Action Freeze Hotfix
+name: Forbidden Lands 3.3.19 Action TTS Isolation
 
 on:
   push:
@@ -11,13 +11,12 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA256: "3548652a60d4d3c7e11eef072028cbdbdf244531be1487d689f1d36ba9dba4c3"
-  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.18_KOKORO_STREAMING_PROFILE_ANDROID_STUDIO.zip"
+  SOURCE_SHA256: "187d87cb9d0ec722eb4e1ce237ea0d2c8791fddb48673c25bc8b62c9c6989b73"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.19_ACTION_TTS_ISOLATION_ANDROID_STUDIO.zip"
   FIRE_API: "https://api.firestorage.ai/dev/file"
-  SHARE_ID: "074j3IuXdyPA"
-  FILE_ID: "01a0ce2b83897377a093fb98687637a3"
+  SHARE_ID: "MCKwS9BK3M1l"
+  FILE_ID: "01a0d25b4c9d73d18baed089e85c0429"
   APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk"
-  SOURCE_OUT: "Braseiro_Forbidden_Lands_3.3.19_ACTION_FREEZE_HOTFIX_ANDROID_STUDIO.zip"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
   ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
 
@@ -28,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download exact 3.3.18 source
+      - name: Download exact 3.3.19 source
         shell: bash
         run: |
           set -euo pipefail
@@ -39,7 +38,7 @@ jobs:
           data=json.load(open('/tmp/fl-files.json', encoding='utf-8'))
           wanted=os.environ['FILE_ID']
           if not any(str(x.get('fileId')) == wanted for x in (data.get('files') or [])):
-              raise SystemExit('Forbidden Lands 3.3.18 source not found')
+              raise SystemExit('Forbidden Lands 3.3.19 source not found')
           PY
           curl -fsSL -X POST "$FIRE_API/shares/$SHARE_ID/files/$FILE_ID/download" -o /tmp/fl-download.json
           DOWNLOAD_URL="$(python3 - <<'PY'
@@ -53,210 +52,33 @@ jobs:
           unzip -t "incoming/$SOURCE_NAME" > SOURCE_ZIP_INTEGRITY.txt
           unzip -q "incoming/$SOURCE_NAME" -d work
 
-      - name: Patch 3.3.19 action freeze
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import json, re
-
-          root=Path('work')
-          adventure=root/'src/screens/AdventureScreenV3.tsx'
-          s=adventure.read_text(encoding='utf-8')
-
-          s=s.replace(
-              'const MASTER_ACTION_HARD_DEADLINE_MS = 28_000;',
-              'const MASTER_ACTION_HARD_DEADLINE_MS = 28_000;\nconst MASTER_CONTEXT_HARD_DEADLINE_MS = 5_000;'
-          )
-
-          needle="""    const text = (forced || input).trim();
-    if (!text || busy || masterPending) return;
-    const actor = characters.find(character => character.id === actorOverrideId) || activeCharacter;"""
-          repl="""    const text = (forced || input).trim();
-    if (!text || busy || masterPending) return;
-
-    // 3.3.19: uma nova ação sempre interrompe a narração anterior antes de
-    // iniciar contexto/RAG/Gemini. Kokoro local pode continuar inferindo mesmo
-    // após o áudio audível terminar e competir por CPU com o WebView.
-    audioEngine.stopNarration();
-    if (playing) {
-      setPlaying(false);
-      window.dispatchEvent(new CustomEvent('master_narration_ended', {
-        detail: { sceneId: latestScene?.id, source: 'forbidden_lands', interrupted: true, reason: 'new_action' },
-      }));
-    }
-
-    const actor = characters.find(character => character.id === actorOverrideId) || activeCharacter;"""
-          if needle not in s:
-              raise SystemExit('send() start marker not found')
-          s=s.replace(needle,repl,1)
-
-          old="""          if (!destination.terrainConfirmed) {
-            const analyzed = await TerrainAnalysisService.analyzeHex(destination);
-            setTerrain({ hex: analyzed, action: text, initial: false });
-            setTerrainChoice(analyzed.visualTerrainAnalysis?.suggestedTerrain !== 'uncertain'
-              ? analyzed.visualTerrainAnalysis?.suggestedTerrain || ''
-              : analyzed.physicalTerrain !== 'review' ? analyzed.physicalTerrain || '' : '');
-            return;
-          }"""
-          new="""          if (!destination.terrainConfirmed) {
-            // 3.3.19: NUNCA chame Gemini Vision/análise visual na frente do toque.
-            // Abra a confirmação imediatamente com os dados já existentes. Isso
-            // elimina o congelamento de ações sugeridas de viagem.
-            setTerrain({ hex: destination, action: text, initial: false });
-            setTerrainChoice(destination.visualTerrainAnalysis?.suggestedTerrain !== 'uncertain'
-              ? destination.visualTerrainAnalysis?.suggestedTerrain || ''
-              : destination.physicalTerrain !== 'review' ? destination.physicalTerrain || '' : '');
-            setMessage('Confirme o terreno do destino para continuar a ação.');
-            setBusy(false);
-            await yieldToUi();
-            return;
-          }"""
-          if old not in s:
-              raise SystemExit('blocking destination terrain analysis marker not found')
-          s=s.replace(old,new,1)
-
-          old_context="""    const context = await MasterContextBuilder.build({
-      campaign: active,
-      characters,
-      currentHex: current,
-      destinationHex: destination,
-      scenes,
-      actingCharacter: actor,
-      playerText,
-      initial,
-    });"""
-          new_context="""    let context: any;
-    try {
-      context = await withHardDeadline(
-        MasterContextBuilder.build({
-          campaign: active,
-          characters,
-          currentHex: current,
-          destinationHex: destination,
-          scenes,
-          actingCharacter: actor,
-          playerText,
-          initial,
-        }),
-        MASTER_CONTEXT_HARD_DEADLINE_MS,
-        'MASTER_CONTEXT_TIMEOUT',
-      );
-    } catch (contextError: any) {
-      if (!/MASTER_CONTEXT_TIMEOUT/i.test(String(contextError?.message || contextError))) throw contextError;
-
-      // O RAG detalhado é enriquecimento. Ele não pode congelar a ação.
-      // Sem citações, RuleAuthorityService continuará bloqueando qualquer
-      // resolução mecânica que exija fonte; portanto este fallback é seguro.
-      const fallbackWorld = worldState || WorldStateService.normalize(null, active.id);
-      const previous = [...scenes].reverse().find(item => item.advancesFiction !== false);
-      context = {
-        worldState: fallbackWorld,
-        npcs: [],
-        memoryContext: previous
-          ? `CENA ${previous.sequence ?? '?'} — ${previous.title}\nAção: ${previous.playerText || 'abertura'}\nResumo: ${previous.summary || ''}\nTrecho final: ${String(previous.narration || '').slice(-700)}`
-          : 'Nenhuma cena canônica anterior disponível.',
-        worldContext: 'Contexto detalhado do mundo excedeu o orçamento desta ação. Preserve estritamente os fatos da cena atual e não invente mecânicas.',
-        ruleContext: '',
-        campaignNotesContext: '',
-        ruleCitations: [],
-        environmentContext: `Local atual: ${current.terrainResolution?.finalTerrainLabel || current.physicalTerrainLabel || current.terrain || 'terras selvagens'}.`,
-        environmentCues: [],
-      };
-      setMessage('Contexto pesado ignorado; enviando a ação ao Mestre...');
-      await yieldToUi();
-    }"""
-          if old_context not in s:
-              raise SystemExit('MasterContextBuilder marker not found')
-          s=s.replace(old_context,new_context,1)
-
-          adventure.write_text(s,encoding='utf-8')
-
-          gradle=root/'android/app/build.gradle'
-          g=gradle.read_text(encoding='utf-8')
-          g=g.replace('versionCode 303018','versionCode 303019')
-          g=g.replace('versionName "3.3.18"','versionName "3.3.19"')
-          gradle.write_text(g,encoding='utf-8')
-
-          package=root/'package.json'
-          data=json.loads(package.read_text(encoding='utf-8'))
-          data['version']='3.3.19'
-          package.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-
-          verify=root/'scripts/verify-runtime-3319.mjs'
-          verify.write_text(r"""import fs from 'node:fs';
-          import assert from 'node:assert/strict';
-
-          const adventure = fs.readFileSync(new URL('../src/screens/AdventureScreenV3.tsx', import.meta.url), 'utf8');
-          const gradle = fs.readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
-
-          assert.match(adventure, /audioEngine\.stopNarration\(\);/);
-          assert.match(adventure, /reason: 'new_action'/);
-          assert.match(adventure, /MASTER_CONTEXT_HARD_DEADLINE_MS = 5_000/);
-          assert.match(adventure, /MASTER_CONTEXT_TIMEOUT/);
-          assert.match(adventure, /Contexto pesado ignorado; enviando a ação ao Mestre/);
-          assert.doesNotMatch(adventure, /const analyzed = await TerrainAnalysisService\.analyzeHex\(destination\)/);
-          assert.match(adventure, /NUNCA chame Gemini Vision\/análise visual na frente do toque/);
-          assert.match(adventure, /setTerrain\(\{ hex: destination, action: text, initial: false \}\)/);
-          assert.match(adventure, /setBusy\(false\);\n\s*await yieldToUi\(\);\n\s*return;/);
-          assert.match(gradle, /versionCode 303019/);
-          assert.match(gradle, /versionName "3\.3\.19"/);
-
-          console.log('PASS runtime-3319: action click is non-blocking, stops narration, skips synchronous Vision and has safe context timeout.');
-          """.replace(/^          /gm,''),encoding='utf-8')
-          PY
-
-          node work/scripts/verify-runtime-3319.mjs
-
-      - name: Locate Android and web roots
-        id: src
-        shell: bash
-        run: |
-          set -euo pipefail
-          ANDROID_ROOT=""
-          while IFS= read -r settings; do
-            candidate="$(dirname "$settings")"
-            if [ -f "$candidate/gradlew" ] && [ -f "$candidate/gradle/wrapper/gradle-wrapper.jar" ] && [ -f "$candidate/app/src/main/AndroidManifest.xml" ]; then
-              ANDROID_ROOT="$candidate"
-              break
-            fi
-          done < <(find work -type f \( -name settings.gradle -o -name settings.gradle.kts \) | sort)
-          test -n "$ANDROID_ROOT"
-          WEB_ROOT="$(dirname "$ANDROID_ROOT")"
-          test -f "$WEB_ROOT/package.json"
-          chmod +x "$ANDROID_ROOT/gradlew"
-          echo "android_root=$GITHUB_WORKSPACE/$ANDROID_ROOT" >> "$GITHUB_OUTPUT"
-          echo "web_root=$GITHUB_WORKSPACE/$WEB_ROOT" >> "$GITHUB_OUTPUT"
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install dependencies and gates
+      - name: Install dependencies and regression gates
         shell: bash
-        working-directory: ${{ steps.src.outputs.web_root }}
+        working-directory: ${{ github.workspace }}/work
         run: |
           set -euo pipefail
           npm config set registry https://registry.npmjs.org/
           npm ci --no-audit --no-fund
-          npm run verify:runtime-3318
+          npm run verify:runtime-3319
           npm run verify:rules
-          node scripts/verify-runtime-3319.mjs
 
       - name: Build web and sync Android
         shell: bash
-        working-directory: ${{ steps.src.outputs.web_root }}
+        working-directory: ${{ github.workspace }}/work
         run: |
           set -euo pipefail
           npm run android:sync
           test -f android/app/src/main/assets/public/index.html
-          grep -R -q "Contexto pesado ignorado" android/app/src/main/assets/public/assets
-          grep -R -q "Confirme o terreno do destino" android/app/src/main/assets/public/assets
-          grep -R -q "new_action" android/app/src/main/assets/public/assets
-          ! grep -R -q "const analyzed = await TerrainAnalysisService.analyzeHex(destination)" src/screens/AdventureScreenV3.tsx
           grep -q "versionCode 303019" android/app/build.gradle
           grep -q 'versionName "3.3.19"' android/app/build.gradle
+          grep -q "ttsControlExecutor.execute" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -q "activeSequenceIndex == 0 ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -R -q "player input must always win over narration" src/screens/AdventureScreenV3.tsx
+          grep -R -q "Action completion is committed/rendered before any native TTS work" src/screens/AdventureScreenV3.tsx
 
       - uses: actions/setup-java@v4
         with:
@@ -274,17 +96,18 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile and assemble APK
+      - name: Compile and assemble
         shell: bash
-        working-directory: ${{ steps.src.outputs.android_root }}
+        working-directory: ${{ github.workspace }}/work/android
         run: |
           set -euo pipefail
-          ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_BUILD.txt"
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources :app:compileDebugKotlin :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_BUILD.txt"
           APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | sort | head -1)"
           test -f "$APK"
           cp "$APK" "$GITHUB_WORKSPACE/$APK_NAME"
 
-      - name: Validate APK and source
+      - name: Validate APK
         shell: bash
         run: |
           set -euo pipefail
@@ -296,10 +119,6 @@ jobs:
           grep -q "versionCode='303019'" APK_BADGING.txt
           grep -q "versionName='3.3.19'" APK_BADGING.txt
           sha256sum "$APK_NAME" > "$APK_NAME.sha256"
-
-          (cd work && zip -qr "$GITHUB_WORKSPACE/$SOURCE_OUT" . -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*')
-          unzip -t "$SOURCE_OUT" > SOURCE_OUT_ZIP_TEST.txt
-          sha256sum "$SOURCE_OUT" > "$SOURCE_OUT.sha256"
 
       - name: Android smoke
         uses: reactivecircus/android-emulator-runner@v2
@@ -321,24 +140,22 @@ jobs:
             adb logcat -d -t 1200 > FORBIDDEN_LANDS_3.3.19_LOGCAT.txt
             ! grep -q "FATAL EXCEPTION" FORBIDDEN_LANDS_3.3.19_LOGCAT.txt
 
-      - name: Upload artifacts
+      - name: Upload validated artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: forbidden-lands-3.3.19-action-freeze-hotfix
+          name: forbidden-lands-3.3.19-action-tts-isolation
           compression-level: 0
           retention-days: 7
           path: |
             BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk
             BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk.sha256
-            Braseiro_Forbidden_Lands_3.3.19_ACTION_FREEZE_HOTFIX_ANDROID_STUDIO.zip
-            Braseiro_Forbidden_Lands_3.3.19_ACTION_FREEZE_HOTFIX_ANDROID_STUDIO.zip.sha256
             APK_BADGING.txt
             APK_SIGNATURE.txt
             APK_ZIP_TEST.txt
-            SOURCE_OUT_ZIP_TEST.txt
             GRADLE_BUILD.txt
             FORBIDDEN_LANDS_3.3.19_FIRST_LAUNCH.png
             FORBIDDEN_LANDS_3.3.19_LOGCAT.txt
+            SOURCE_ZIP_INTEGRITY.txt
 
       - name: Publish release
         if: success()
@@ -347,6 +164,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="forbidden-lands-3.3.19-action-freeze-hotfix"
+          TAG="forbidden-lands-3.3.19-action-tts-isolation"
           gh release delete "$TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
-          gh release create "$TAG"             "$APK_NAME"             "$APK_NAME.sha256"             "$SOURCE_OUT"             "$SOURCE_OUT.sha256"             --title "Forbidden Lands 3.3.19 — Action Freeze Hotfix"             --notes "Hotfix: para TTS ao tocar nova ação; remove Gemini Vision bloqueante do clique de viagem; limita montagem pesada de contexto a 5 s com fallback conservador sem regras inventadas."
+          gh release create "$TAG"             "$APK_NAME"             "$APK_NAME.sha256"             --title "Forbidden Lands 3.3.19 — Action / TTS Isolation"             --notes "Corrige congelamento ao tocar ações: ação cancela narração antes de RAG/Gemini; stop do Android TTS sai do caminho crítico da WebView; primeiro bloco local usa FLUSH uma vez e os seguintes QUEUE_ADD; autoplay só começa após cena persistida/renderizada."
