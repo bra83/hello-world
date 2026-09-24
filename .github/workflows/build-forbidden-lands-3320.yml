@@ -1278,12 +1278,7 @@ jobs:
               "            localRate: settings.androidTtsLocalRate ?? 1.0,"
           )
 
-          old_engine_change = """                  onChange={async e => {
-                    const enginePackage = e.target.value;
-                    await update({ androidTtsEnginePackage: enginePackage, androidTtsVoiceName: '' });
-                    await refreshAndroidTts(enginePackage);
-                  }}"""
-          new_engine_change = """                  onChange={async e => {
+          new_engine_change = """onChange={async e => {
                     const enginePackage = e.target.value;
                     const kokoro = isBraseiroKokoroPackage(enginePackage);
                     await update({
@@ -1294,9 +1289,14 @@ jobs:
                     });
                     await refreshAndroidTts(enginePackage);
                   }}"""
-          if old_engine_change not in ui:
+          ui, engine_change_count = re.subn(
+              r'onChange=\{async e => \{\s*const enginePackage = e\.target\.value;\s*await update\(\{ androidTtsEnginePackage: enginePackage, androidTtsVoiceName: \'\' \}\);\s*await refreshAndroidTts\(enginePackage\);\s*\}\}',
+              new_engine_change,
+              ui,
+              count=1,
+          )
+          if engine_change_count != 1:
               raise SystemExit('engine onChange block missing')
-          ui = ui.replace(old_engine_change, new_engine_change, 1)
 
           profile_start = ui.index("              <label>\n                Perfil da engine")
           voice_label = ui.index("              <label>\n                Voz da engine", profile_start)
