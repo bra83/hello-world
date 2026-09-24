@@ -1,0 +1,1523 @@
+name: Forbidden Lands 3.3.20 Current Braseiro Kokoro Integration
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/build-forbidden-lands-3320.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_SHA256: "441fd6e9c0f667bc78a69c5699c371163de52087fd796b0d7ffa3afd60b159b1"
+  SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.19_ACTION_TTS_ISOLATION_ANDROID_STUDIO.zip"
+  FIRE_API: "https://api.firestorage.ai/dev/file"
+  SHARE_ID: "2sonjo9_IOEG"
+  FILE_ID: "01a0d25ef27e77b1b77fb761c277ca45"
+  APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.20.apk"
+  SOURCE_OUT: "Braseiro_Forbidden_Lands_3.3.20_CURRENT_KOKORO_ANDROID_STUDIO.zip"
+  ANDROID_HOME: "/usr/local/lib/android/sdk"
+  ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact 3.3.19 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p incoming work
+          curl -fsSL "$FIRE_API/shares/$SHARE_ID/files?maxResults=1000" -o /tmp/files.json
+          curl -fsSL -X POST "$FIRE_API/shares/$SHARE_ID/files/$FILE_ID/download" -o /tmp/download.json
+          URL="$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/download.json')).get('downloadUrl') or '')
+          PY
+          )"
+          test -n "$URL"
+          curl -fL --retry 5 --retry-delay 2 "$URL" -o "incoming/$SOURCE_NAME"
+          echo "$SOURCE_SHA256  incoming/$SOURCE_NAME" | sha256sum -c -
+          unzip -q "incoming/$SOURCE_NAME" -d work
+
+      - name: Patch only Android TTS integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, re
+
+          root = Path('work')
+
+          # ------------------------------------------------------------
+          # Android native bridge: real engines + real Voice objects only.
+          # ------------------------------------------------------------
+          plugin = root/'android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java'
+          plugin.write_text(r'''package com.braseiro.forbiddenlands;
+
+          import android.content.Intent;
+          import android.content.pm.ApplicationInfo;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.provider.Settings;
+          import android.speech.tts.TextToSpeech;
+          import android.speech.tts.UtteranceProgressListener;
+          import android.speech.tts.Voice;
+
+          import com.getcapacitor.JSArray;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          import org.json.JSONObject;
+
+          import java.util.ArrayList;
+          import java.util.Comparator;
+          import java.util.LinkedHashMap;
+          import java.util.List;
+          import java.util.Locale;
+          import java.util.Map;
+          import java.util.Set;
+          import java.util.UUID;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+
+          @CapacitorPlugin(name = "AndroidTts")
+          public class AndroidTtsPlugin extends Plugin {
+              private static final String KOKORO_DEBUG = "com.k2fsa.sherpa.onnx.tts.engine.debug";
+              private static final String KOKORO_RELEASE = "com.k2fsa.sherpa.onnx.tts.engine";
+              private static final String LEGACY_KOKORO = "com.braseiro.kokoro.ptbr";
+              private static final String KOKORO_LABEL = "Braseiro Kokoro PT-BR · neural";
+
+              private final Handler mainHandler = new Handler(Looper.getMainLooper());
+              private final ExecutorService ttsControlExecutor = Executors.newSingleThreadExecutor(runnable -> {
+                  Thread thread = new Thread(runnable, "braseiro-tts-control");
+                  thread.setDaemon(true);
+                  return thread;
+              });
+
+              private volatile TextToSpeech tts;
+              private volatile boolean ready = false;
+              private volatile boolean initializationFailed = false;
+              private volatile String configuredEnginePackage = "";
+              private volatile int engineGeneration = 0;
+
+              private volatile PluginCall activeCall;
+              private volatile String activeUtteranceId;
+              private volatile String activeRequestId;
+              private volatile int activeOffset;
+
+              private volatile PluginCall activeSequenceCall;
+              private final List<String> activeSequenceTexts = new ArrayList<>();
+              private final List<Integer> activeSequenceOffsets = new ArrayList<>();
+              private volatile int activeSequenceIndex = -1;
+              private volatile String activeSequenceBaseRequestId = "";
+              private volatile float activeSequenceRate = 1.0f;
+              private volatile float activeSequencePitch = 1.0f;
+              private volatile String activeSequenceLanguage = "pt-BR";
+              private volatile String activeSequenceVoiceName = "";
+
+              @Override
+              public void load() {
+                  initializeTts("");
+              }
+
+              private String trimEngine(String enginePackage) {
+                  return enginePackage == null ? "" : enginePackage.trim();
+              }
+
+              private boolean isKokoroPackage(String packageName) {
+                  String value = trimEngine(packageName);
+                  return KOKORO_DEBUG.equals(value) || KOKORO_RELEASE.equals(value);
+              }
+
+              private boolean isLegacyKokoroToken(String value) {
+                  String normalized = trimEngine(value).toLowerCase(Locale.ROOT);
+                  return LEGACY_KOKORO.equals(normalized)
+                          || normalized.contains("db next")
+                          || normalized.contains("db-next")
+                          || normalized.contains("next-gen")
+                          || normalized.contains("nextgen")
+                          || normalized.contains("braseiro kokoro");
+              }
+
+              private boolean packageEnabled(String packageName) {
+                  if (packageName == null || packageName.trim().isEmpty()) return false;
+                  try {
+                      ApplicationInfo info = getContext().getPackageManager().getApplicationInfo(packageName, 0);
+                      return info.enabled;
+                  } catch (Exception ignored) {
+                      return false;
+                  }
+              }
+
+              private String installedKokoroPackage(String preferred) {
+                  String requested = trimEngine(preferred);
+                  if (isKokoroPackage(requested) && packageEnabled(requested)) return requested;
+                  if (packageEnabled(KOKORO_DEBUG)) return KOKORO_DEBUG;
+                  if (packageEnabled(KOKORO_RELEASE)) return KOKORO_RELEASE;
+                  return "";
+              }
+
+              private String resolveRequestedEngine(String raw) {
+                  String requested = trimEngine(raw);
+                  if (isLegacyKokoroToken(requested)) return installedKokoroPackage("");
+                  if (isKokoroPackage(requested) && !packageEnabled(requested)) {
+                      String alternative = installedKokoroPackage(requested);
+                      return alternative.isEmpty() ? requested : alternative;
+                  }
+                  return requested;
+              }
+
+              private synchronized void initializeTts(String enginePackage) {
+                  final String requested = resolveRequestedEngine(enginePackage);
+                  if (tts != null && configuredEnginePackage.equals(requested) && !initializationFailed) return;
+
+                  TextToSpeech previous = tts;
+                  clearActiveState(true);
+                  tts = null;
+                  ready = false;
+                  initializationFailed = false;
+                  configuredEnginePackage = requested;
+                  final int generation = ++engineGeneration;
+
+                  if (previous != null) {
+                      ttsControlExecutor.execute(() -> {
+                          try { previous.stop(); } catch (Exception ignored) {}
+                          try { previous.shutdown(); } catch (Exception ignored) {}
+                      });
+                  }
+
+                  TextToSpeech.OnInitListener listener = status -> {
+                      if (generation != engineGeneration) return;
+                      ready = status == TextToSpeech.SUCCESS;
+                      initializationFailed = !ready;
+                      if (!ready) {
+                          TextToSpeech failed = tts;
+                          tts = null;
+                          if (failed != null) {
+                              ttsControlExecutor.execute(() -> {
+                                  try { failed.shutdown(); } catch (Exception ignored) {}
+                              });
+                          }
+                          return;
+                      }
+                      installProgressListener();
+                  };
+
+                  try {
+                      if (requested.isEmpty()) tts = new TextToSpeech(getContext(), listener);
+                      else tts = new TextToSpeech(getContext(), listener, requested);
+                  } catch (Exception error) {
+                      initializationFailed = true;
+                      ready = false;
+                      tts = null;
+                  }
+              }
+
+              private void installProgressListener() {
+                  TextToSpeech current = tts;
+                  if (current == null) return;
+                  current.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                      @Override public void onStart(String utteranceId) {
+                          if (activeUtteranceId == null || !activeUtteranceId.equals(utteranceId)) return;
+                          final String requestId = activeRequestId == null ? utteranceId : activeRequestId;
+                          final int chunkIndex = activeSequenceCall != null ? activeSequenceIndex : -1;
+                          mainHandler.post(() -> {
+                              JSObject event = new JSObject();
+                              event.put("requestId", requestId);
+                              if (chunkIndex >= 0) {
+                                  event.put("chunkIndex", chunkIndex);
+                                  event.put("sequence", true);
+                              }
+                              notifyListeners("utteranceStart", event);
+                          });
+                      }
+
+                      @Override public void onRangeStart(String utteranceId, int start, int end, int frame) {
+                          if (activeUtteranceId == null || !activeUtteranceId.equals(utteranceId)) return;
+                          final String requestId = activeRequestId == null ? utteranceId : activeRequestId;
+                          final int offset = activeOffset;
+                          mainHandler.post(() -> {
+                              JSObject event = new JSObject();
+                              event.put("requestId", requestId);
+                              event.put("start", start);
+                              event.put("end", end);
+                              event.put("absoluteStart", offset + start);
+                              event.put("absoluteEnd", offset + end);
+                              notifyListeners("utteranceRange", event);
+                          });
+                      }
+
+                      @Override public void onDone(String utteranceId) {
+                          finishUtterance(utteranceId, null);
+                      }
+
+                      @Override public void onError(String utteranceId) {
+                          finishUtterance(utteranceId, "O mecanismo TTS do Android falhou ao reproduzir a fala.");
+                      }
+
+                      @Override public void onError(String utteranceId, int errorCode) {
+                          finishUtterance(utteranceId, "O mecanismo TTS do Android falhou (código " + errorCode + ").");
+                      }
+
+                      @Override public void onStop(String utteranceId, boolean interrupted) {
+                          finishUtterance(utteranceId, interrupted ? "A fala do Android foi interrompida." : null);
+                      }
+                  });
+              }
+
+              private void ensureEngine(String enginePackage) {
+                  String requested = resolveRequestedEngine(enginePackage);
+                  if (tts == null || initializationFailed || !configuredEnginePackage.equals(requested)) {
+                      initializeTts(requested);
+                  }
+              }
+
+              private boolean isBraseiroKokoroEngine() {
+                  return isKokoroPackage(configuredEnginePackage);
+              }
+
+              private String defaultEnginePackage() {
+                  String value = "";
+                  try {
+                      value = Settings.Secure.getString(getContext().getContentResolver(), "tts_default_synth");
+                  } catch (Exception ignored) {}
+                  value = resolveRequestedEngine(value);
+                  if (!value.isEmpty()) return value;
+                  try {
+                      TextToSpeech current = tts;
+                      if (current != null && ready) return resolveRequestedEngine(current.getDefaultEngine());
+                  } catch (Exception ignored) {}
+                  return "";
+              }
+
+              private String packageLabel(PackageManager packageManager, String packageName) {
+                  if (isKokoroPackage(packageName)) return KOKORO_LABEL;
+                  try {
+                      ApplicationInfo applicationInfo = packageManager.getApplicationInfo(packageName, 0);
+                      CharSequence label = packageManager.getApplicationLabel(applicationInfo);
+                      return label == null ? packageName : String.valueOf(label);
+                  } catch (Exception ignored) {
+                      return packageName;
+                  }
+              }
+
+              private void addDetectedEngine(
+                      Map<String, JSObject> engines,
+                      PackageManager packageManager,
+                      String packageName,
+                      String label,
+                      String defaultPackage,
+                      String detectedBy
+              ) {
+                  String normalized = trimEngine(packageName);
+                  if (normalized.isEmpty() || LEGACY_KOKORO.equals(normalized)) return;
+                  try {
+                      ApplicationInfo applicationInfo = packageManager.getApplicationInfo(normalized, 0);
+                      if (!applicationInfo.enabled) return;
+                  } catch (Exception ignored) {
+                      if ("system-default".equals(detectedBy)) return;
+                  }
+
+                  JSObject item = engines.get(normalized);
+                  if (item == null) item = new JSObject();
+                  item.put("packageName", normalized);
+                  item.put("label", isKokoroPackage(normalized)
+                          ? KOKORO_LABEL
+                          : (label == null || label.trim().isEmpty() ? packageLabel(packageManager, normalized) : label.trim()));
+                  item.put("isDefault", normalized.equals(defaultPackage));
+                  item.put("backend", isKokoroPackage(normalized) ? "kokoro" : "android");
+                  item.put("detectedBy", detectedBy);
+                  engines.put(normalized, item);
+              }
+
+              private String collapseKokoroEngines(Map<String, JSObject> detected, String defaultPackage) {
+                  boolean hasDebug = detected.containsKey(KOKORO_DEBUG);
+                  boolean hasRelease = detected.containsKey(KOKORO_RELEASE);
+                  if (!hasDebug && !hasRelease) return defaultPackage;
+
+                  String winner;
+                  if (isKokoroPackage(configuredEnginePackage) && detected.containsKey(configuredEnginePackage)) {
+                      winner = configuredEnginePackage;
+                  } else if (isKokoroPackage(defaultPackage) && detected.containsKey(defaultPackage)) {
+                      winner = defaultPackage;
+                  } else {
+                      winner = hasDebug ? KOKORO_DEBUG : KOKORO_RELEASE;
+                  }
+
+                  boolean wasDefault = isKokoroPackage(defaultPackage) || isLegacyKokoroToken(defaultPackage);
+                  detected.remove(KOKORO_DEBUG);
+                  detected.remove(KOKORO_RELEASE);
+                  detected.remove(LEGACY_KOKORO);
+
+                  JSObject item = new JSObject();
+                  item.put("packageName", winner);
+                  item.put("label", KOKORO_LABEL);
+                  item.put("isDefault", wasDefault || winner.equals(defaultPackage));
+                  item.put("backend", "kokoro");
+                  item.put("detectedBy", "canonical-kokoro");
+                  detected.put(winner, item);
+                  return wasDefault ? winner : defaultPackage;
+              }
+
+              @PluginMethod
+              public void listEngines(PluginCall call) {
+                  try {
+                      PackageManager packageManager = getContext().getPackageManager();
+                      String defaultPackage = defaultEnginePackage();
+                      Map<String, JSObject> detected = new LinkedHashMap<>();
+
+                      TextToSpeech current = tts;
+                      if (current != null) {
+                          try {
+                              List<TextToSpeech.EngineInfo> list = new ArrayList<>(current.getEngines());
+                              for (TextToSpeech.EngineInfo info : list) {
+                                  addDetectedEngine(detected, packageManager, info.name, String.valueOf(info.label), defaultPackage, "tts-api");
+                              }
+                          } catch (Exception ignored) {}
+                      }
+
+                      try {
+                          Intent intent = new Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE);
+                          List<ResolveInfo> services = packageManager.queryIntentServices(intent, PackageManager.MATCH_ALL);
+                          for (ResolveInfo resolveInfo : services) {
+                              if (resolveInfo == null || resolveInfo.serviceInfo == null) continue;
+                              if (!resolveInfo.serviceInfo.enabled || resolveInfo.serviceInfo.applicationInfo == null || !resolveInfo.serviceInfo.applicationInfo.enabled) continue;
+                              CharSequence serviceLabel = resolveInfo.loadLabel(packageManager);
+                              addDetectedEngine(
+                                      detected,
+                                      packageManager,
+                                      resolveInfo.serviceInfo.packageName,
+                                      serviceLabel == null ? "" : String.valueOf(serviceLabel),
+                                      defaultPackage,
+                                      "package-manager"
+                              );
+                          }
+                      } catch (Exception ignored) {}
+
+                      if (!defaultPackage.isEmpty()) {
+                          addDetectedEngine(detected, packageManager, defaultPackage, packageLabel(packageManager, defaultPackage), defaultPackage, "system-default");
+                      }
+
+                      defaultPackage = collapseKokoroEngines(detected, defaultPackage);
+
+                      List<JSObject> sorted = new ArrayList<>(detected.values());
+                      sorted.sort(Comparator.comparing(
+                              item -> item.optString("label", item.optString("packageName", "")),
+                              String.CASE_INSENSITIVE_ORDER
+                      ));
+
+                      JSArray engines = new JSArray();
+                      for (JSObject item : sorted) engines.put(item);
+
+                      JSObject response = new JSObject();
+                      response.put("engines", engines);
+                      response.put("defaultEnginePackage", defaultPackage);
+                      call.resolve(response);
+                  } catch (Exception error) {
+                      call.reject("Não foi possível consultar as engines TTS instaladas.", error);
+                  }
+              }
+
+              @PluginMethod
+              public void listVoices(PluginCall call) {
+                  if (initializationFailed) initializationFailed = false;
+                  ensureEngine(call.getString("enginePackage", ""));
+                  waitForVoices(call, 0);
+              }
+
+              private void waitForVoices(PluginCall call, int attempt) {
+                  if (ready && tts != null) {
+                      try {
+                          Set<Voice> available = tts.getVoices();
+                          List<Voice> voices = available == null ? new ArrayList<>() : new ArrayList<>(available);
+                          voices.sort((a, b) -> {
+                              String al = a.getLocale() == null ? "" : a.getLocale().toLanguageTag();
+                              String bl = b.getLocale() == null ? "" : b.getLocale().toLanguageTag();
+                              boolean apt = al.toLowerCase(Locale.ROOT).startsWith("pt");
+                              boolean bpt = bl.toLowerCase(Locale.ROOT).startsWith("pt");
+                              if (apt != bpt) return apt ? -1 : 1;
+                              int localeCompare = al.compareToIgnoreCase(bl);
+                              return localeCompare != 0 ? localeCompare : a.getName().compareToIgnoreCase(b.getName());
+                          });
+
+                          JSArray resultVoices = new JSArray();
+                          for (Voice voice : voices) {
+                              JSObject item = new JSObject();
+                              item.put("name", voice.getName());
+                              item.put("locale", voice.getLocale() == null ? "" : voice.getLocale().toLanguageTag());
+                              item.put("quality", voice.getQuality());
+                              item.put("latency", voice.getLatency());
+                              item.put("networkRequired", voice.isNetworkConnectionRequired());
+                              JSArray features = new JSArray();
+                              if (voice.getFeatures() != null) {
+                                  for (String feature : voice.getFeatures()) features.put(feature);
+                              }
+                              item.put("features", features);
+                              resultVoices.put(item);
+                          }
+
+                          JSObject response = new JSObject();
+                          response.put("voices", resultVoices);
+                          response.put("enginePackage", configuredEnginePackage);
+                          response.put("backend", isBraseiroKokoroEngine() ? "kokoro" : "android");
+                          call.resolve(response);
+                      } catch (Exception error) {
+                          call.reject("A engine TTS iniciou, mas não foi possível ler TextToSpeech.voices.", error);
+                      }
+                      return;
+                  }
+
+                  if (initializationFailed || attempt >= 150) {
+                      call.reject("A engine TTS selecionada não iniciou. Verifique se ela está instalada e habilitada no Android.");
+                      return;
+                  }
+                  mainHandler.postDelayed(() -> waitForVoices(call, attempt + 1), 100);
+              }
+
+              @PluginMethod
+              public void isAvailable(PluginCall call) {
+                  if (initializationFailed) initializationFailed = false;
+                  ensureEngine(call.getString("enginePackage", ""));
+                  waitForReady(call, 0, true);
+              }
+
+              private Voice findVoiceByName(String voiceName) {
+                  if (tts == null || voiceName == null || voiceName.trim().isEmpty()) return null;
+                  try {
+                      Set<Voice> voices = tts.getVoices();
+                      if (voices == null) return null;
+                      String wanted = voiceName.trim();
+                      for (Voice voice : voices) {
+                          if (wanted.equals(voice.getName())) return voice;
+                      }
+                  } catch (Exception ignored) {}
+                  return null;
+              }
+
+              private String configureVoiceAndProsody(String voiceName, String language, float rate, float pitch) {
+                  TextToSpeech current = tts;
+                  if (current == null) return "A engine TTS não está pronta.";
+
+                  try {
+                      String requestedVoice = voiceName == null ? "" : voiceName.trim();
+                      if (!requestedVoice.isEmpty()) {
+                          Voice realVoice = findVoiceByName(requestedVoice);
+                          if (realVoice == null) {
+                              return "A voz real selecionada não existe mais nesta engine: " + requestedVoice;
+                          }
+                          int result = current.setVoice(realVoice);
+                          if (result != TextToSpeech.SUCCESS) {
+                              return "A engine recusou a voz Android selecionada: " + requestedVoice;
+                          }
+                      } else if (!isBraseiroKokoroEngine()) {
+                          Locale locale = Locale.forLanguageTag(language == null || language.trim().isEmpty() ? "pt-BR" : language);
+                          int result = current.setLanguage(locale);
+                          if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                              locale = new Locale("pt", "BR");
+                              result = current.setLanguage(locale);
+                          }
+                          if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                              return "A voz em português do Android não está instalada nesta engine.";
+                          }
+                      }
+
+                      current.setSpeechRate(Math.max(0.5f, Math.min(2.0f, rate)));
+                      current.setPitch(Math.max(0.5f, Math.min(2.0f, pitch)));
+                      return null;
+                  } catch (Exception error) {
+                      return "A engine TTS lançou uma exceção ao aplicar a voz real: " + error.getMessage();
+                  }
+              }
+
+              @PluginMethod
+              public void speakSequence(PluginCall call) {
+                  JSArray chunks = call.getArray("chunks");
+                  if (chunks == null || chunks.length() == 0) {
+                      call.reject("Nenhum bloco foi recebido para a fila TTS local.");
+                      return;
+                  }
+                  if (initializationFailed) initializationFailed = false;
+                  ensureEngine(call.getString("enginePackage", ""));
+                  waitForReadySequence(call, 0);
+              }
+
+              private void waitForReadySequence(PluginCall call, int attempt) {
+                  if (ready && tts != null) {
+                      startSequence(call);
+                      return;
+                  }
+                  if (initializationFailed || attempt >= 150) {
+                      call.reject("O mecanismo TTS local não iniciou. Verifique a engine e a voz instaladas.");
+                      return;
+                  }
+                  mainHandler.postDelayed(() -> waitForReadySequence(call, attempt + 1), 100);
+              }
+
+              private void startSequence(PluginCall call) {
+                  // Retire only Braseiro bookkeeping. Do not call stop() here:
+                  // the first new utterance uses QUEUE_FLUSH exactly once.
+                  clearActiveState(true);
+
+                  JSArray chunks = call.getArray("chunks");
+                  activeSequenceTexts.clear();
+                  activeSequenceOffsets.clear();
+                  try {
+                      for (int i = 0; i < chunks.length(); i++) {
+                          JSONObject item = chunks.getJSONObject(i);
+                          String text = item.optString("text", "").trim();
+                          if (text.isEmpty()) continue;
+                          activeSequenceTexts.add(text);
+                          activeSequenceOffsets.add(item.optInt("offset", 0));
+                      }
+                  } catch (Exception error) {
+                      clearSequenceState();
+                      call.reject("A fila TTS local recebeu blocos inválidos.", error);
+                      return;
+                  }
+
+                  if (activeSequenceTexts.isEmpty()) {
+                      clearSequenceState();
+                      call.reject("A fila TTS local ficou vazia após validar os blocos.");
+                      return;
+                  }
+
+                  activeSequenceCall = call;
+                  activeSequenceIndex = 0;
+                  activeSequenceBaseRequestId = call.getString("requestId", "android-local-" + UUID.randomUUID());
+                  activeSequenceRate = call.getFloat("rate", 1.0f);
+                  activeSequencePitch = call.getFloat("pitch", 1.0f);
+                  activeSequenceLanguage = call.getString("language", "pt-BR");
+                  activeSequenceVoiceName = call.getString("voiceName", "");
+
+                  String error = configureVoiceAndProsody(
+                          activeSequenceVoiceName,
+                          activeSequenceLanguage,
+                          activeSequenceRate,
+                          activeSequencePitch
+                  );
+                  if (error != null) {
+                      PluginCall sequence = activeSequenceCall;
+                      clearSequenceState();
+                      if (sequence != null) sequence.reject(error);
+                      return;
+                  }
+                  startSequenceChunk();
+              }
+
+              private void startSequenceChunk() {
+                  if (activeSequenceCall == null || tts == null || activeSequenceIndex < 0 || activeSequenceIndex >= activeSequenceTexts.size()) return;
+
+                  String text = activeSequenceTexts.get(activeSequenceIndex);
+                  activeUtteranceId = "braseiro_local_" + activeSequenceIndex + "_" + UUID.randomUUID();
+                  activeRequestId = activeSequenceBaseRequestId + ":" + activeSequenceIndex;
+                  activeOffset = activeSequenceOffsets.get(activeSequenceIndex);
+
+                  Bundle params = new Bundle();
+                  int queueMode = activeSequenceIndex == 0
+                          ? TextToSpeech.QUEUE_FLUSH
+                          : TextToSpeech.QUEUE_ADD;
+                  int result;
+                  try {
+                      result = tts.speak(text, queueMode, params, activeUtteranceId);
+                  } catch (Exception error) {
+                      result = TextToSpeech.ERROR;
+                  }
+
+                  if (result == TextToSpeech.ERROR) {
+                      int failedIndex = activeSequenceIndex;
+                      PluginCall sequence = activeSequenceCall;
+                      clearSequenceState();
+                      if (sequence != null) {
+                          sequence.reject("A engine TTS local recusou o bloco " + (failedIndex + 1) + ".");
+                      }
+                  }
+              }
+
+              @PluginMethod
+              public void speak(PluginCall call) {
+                  String text = call.getString("text", "").trim();
+                  if (text.isEmpty()) {
+                      call.reject("Texto vazio para a voz do Android.");
+                      return;
+                  }
+                  if (initializationFailed) initializationFailed = false;
+                  ensureEngine(call.getString("enginePackage", ""));
+                  waitForReady(call, 0, false);
+              }
+
+              private void waitForReady(PluginCall call, int attempt, boolean availabilityOnly) {
+                  if (ready && tts != null) {
+                      if (availabilityOnly) {
+                          JSObject response = new JSObject();
+                          response.put("available", true);
+                          response.put("language", "pt-BR");
+                          response.put("enginePackage", configuredEnginePackage);
+                          response.put("backend", isBraseiroKokoroEngine() ? "kokoro" : "android");
+                          call.resolve(response);
+                      } else {
+                          startSpeaking(call);
+                      }
+                      return;
+                  }
+
+                  if (initializationFailed || attempt >= 150) {
+                      if (availabilityOnly) {
+                          JSObject response = new JSObject();
+                          response.put("available", false);
+                          response.put("enginePackage", configuredEnginePackage);
+                          call.resolve(response);
+                      } else {
+                          call.reject("O mecanismo TTS do Android não iniciou. Verifique se a engine e a voz estão instaladas.");
+                      }
+                      return;
+                  }
+
+                  mainHandler.postDelayed(() -> waitForReady(call, attempt + 1, availabilityOnly), 100);
+              }
+
+              private void startSpeaking(PluginCall call) {
+                  String queueMode = call.getString("queueMode", "flush");
+                  boolean queueAdd = "add".equalsIgnoreCase(queueMode);
+
+                  if (!queueAdd) {
+                      // QUEUE_FLUSH is sufficient. Do not synchronously call stop()
+                      // before every normal Android utterance.
+                      clearActiveState(true);
+                  } else if (activeCall != null) {
+                      call.reject("A engine TTS ainda está concluindo a fala anterior.");
+                      return;
+                  }
+
+                  String text = call.getString("text", "");
+                  float rate = call.getFloat("rate", 1.0f);
+                  float pitch = call.getFloat("pitch", 1.0f);
+                  String language = call.getString("language", "pt-BR");
+                  String voiceName = call.getString("voiceName", "").trim();
+
+                  String configurationError = configureVoiceAndProsody(voiceName, language, rate, pitch);
+                  if (configurationError != null) {
+                      call.reject(configurationError);
+                      return;
+                  }
+
+                  activeCall = call;
+                  activeUtteranceId = "braseiro_" + UUID.randomUUID();
+                  activeRequestId = call.getString("requestId", activeUtteranceId);
+                  activeOffset = call.getInt("offset", 0);
+
+                  Bundle params = new Bundle();
+                  int queue = queueAdd ? TextToSpeech.QUEUE_ADD : TextToSpeech.QUEUE_FLUSH;
+                  int result;
+                  try {
+                      result = tts.speak(text, queue, params, activeUtteranceId);
+                  } catch (Exception error) {
+                      result = TextToSpeech.ERROR;
+                  }
+
+                  if (result == TextToSpeech.ERROR) {
+                      activeCall = null;
+                      activeUtteranceId = null;
+                      activeRequestId = null;
+                      activeOffset = 0;
+                      call.reject("A engine TTS selecionada recusou a reprodução da fala.");
+                  }
+              }
+
+              @PluginMethod
+              public void stop(PluginCall call) {
+                  TextToSpeech current = tts;
+                  clearActiveState(true);
+                  call.resolve();
+                  if (current != null) {
+                      ttsControlExecutor.execute(() -> {
+                          try { current.stop(); } catch (Exception ignored) {}
+                      });
+                  }
+              }
+
+              private void clearSequenceState() {
+                  activeSequenceCall = null;
+                  activeSequenceTexts.clear();
+                  activeSequenceOffsets.clear();
+                  activeSequenceIndex = -1;
+                  activeSequenceBaseRequestId = "";
+                  activeUtteranceId = null;
+                  activeRequestId = null;
+                  activeOffset = 0;
+              }
+
+              private void clearActiveState(boolean resolveActive) {
+                  PluginCall call = activeCall;
+                  PluginCall sequence = activeSequenceCall;
+                  activeCall = null;
+                  clearSequenceState();
+                  activeUtteranceId = null;
+                  activeRequestId = null;
+                  activeOffset = 0;
+                  if (resolveActive && call != null) call.resolve();
+                  if (resolveActive && sequence != null) sequence.resolve();
+              }
+
+              private void finishUtterance(String utteranceId, String error) {
+                  mainHandler.post(() -> {
+                      if (activeUtteranceId == null || !activeUtteranceId.equals(utteranceId)) return;
+
+                      if (activeSequenceCall != null) {
+                          PluginCall sequence = activeSequenceCall;
+                          if (error != null) {
+                              clearSequenceState();
+                              sequence.reject(error);
+                              return;
+                          }
+
+                          // Only a real onDone reaches here. No timer/watchdog
+                          // advances the Kokoro sequence.
+                          if (activeSequenceIndex + 1 < activeSequenceTexts.size()) {
+                              activeSequenceIndex += 1;
+                              activeUtteranceId = null;
+                              activeRequestId = null;
+                              activeOffset = 0;
+                              startSequenceChunk();
+                          } else {
+                              clearSequenceState();
+                              sequence.resolve();
+                          }
+                          return;
+                      }
+
+                      if (activeCall == null) return;
+                      PluginCall call = activeCall;
+                      activeCall = null;
+                      activeUtteranceId = null;
+                      activeRequestId = null;
+                      activeOffset = 0;
+                      if (error == null) call.resolve();
+                      else call.reject(error);
+                  });
+              }
+
+              @Override
+              protected void handleOnDestroy() {
+                  TextToSpeech current = tts;
+                  clearActiveState(true);
+                  engineGeneration += 1;
+                  tts = null;
+                  ready = false;
+                  if (current != null) {
+                      try { current.stop(); } catch (Exception ignored) {}
+                      try { current.shutdown(); } catch (Exception ignored) {}
+                  }
+                  ttsControlExecutor.shutdownNow();
+                  super.handleOnDestroy();
+              }
+          }
+          '''.replace('\n          ', '\n').lstrip(), encoding='utf-8')
+
+          # ------------------------------------------------------------
+          # JavaScript audio engine.
+          # ------------------------------------------------------------
+          audio = root/'src/services/audioEngineV2.ts'
+          s = audio.read_text(encoding='utf-8')
+
+          marker = "export type AndroidTtsSelection = { enginePackage?: string; voiceName?: string; language?: string; pitch?: number; localRate?: number; profile?: 'standard' | 'local-neural' };"
+          helpers = marker + r"""
+
+          export const BRASEIRO_KOKORO_PACKAGES = [
+            'com.k2fsa.sherpa.onnx.tts.engine.debug',
+            'com.k2fsa.sherpa.onnx.tts.engine',
+          ] as const;
+
+          export const isBraseiroKokoroPackage = (packageName = '') =>
+            BRASEIRO_KOKORO_PACKAGES.includes(String(packageName || '').trim() as any);
+
+          export const isLegacyKokoroEngineToken = (value = '') => {
+            const normalized = String(value || '').trim().toLowerCase();
+            return normalized === 'com.braseiro.kokoro.ptbr'
+              || /db[\s_-]*next|next[\s_-]*gen|braseiro[\s_-]*kokoro/.test(normalized);
+          };
+          """
+          if marker not in s:
+              raise SystemExit('AndroidTtsSelection marker missing')
+          s = s.replace(marker, helpers, 1)
+
+          field_marker = "  private ttsReadyAt = new WeakMap<Blob, number>();"
+          if field_marker not in s:
+              raise SystemExit('audio class field marker missing')
+          s = s.replace(field_marker, field_marker + "\n  private cachedKokoroEnginePackage = '';", 1)
+
+          old_list = r"""  async listAndroidTtsEngines(): Promise<{ engines: AndroidTtsEngineInfo[]; defaultEnginePackage: string }> {
+              if (!Capacitor.isNativePlatform()) return { engines: [], defaultEnginePackage: '' };
+              const result = await NativeAndroidTts.listEngines();
+              return { engines: Array.isArray(result.engines) ? result.engines : [], defaultEnginePackage: String(result.defaultEnginePackage || '') };
+            }
+
+            async listAndroidTtsVoices(enginePackage = ''): Promise<AndroidTtsVoiceInfo[]> {
+              if (!Capacitor.isNativePlatform()) {
+                const voices = await this.browserVoices();
+                return voices.map(voice => ({ name: voice.name, locale: voice.lang, quality: 0, latency: 0, networkRequired: false, features: [] }));
+              }
+              const result = await NativeAndroidTts.listVoices({ enginePackage });
+              return Array.isArray(result.voices) ? result.voices : [];
+            }"""
+          old_list = old_list.replace('            ', '')
+          new_list = r"""  async listAndroidTtsEngines(): Promise<{ engines: AndroidTtsEngineInfo[]; defaultEnginePackage: string }> {
+            if (!Capacitor.isNativePlatform()) return { engines: [], defaultEnginePackage: '' };
+            const result = await NativeAndroidTts.listEngines();
+            const engines = Array.isArray(result.engines) ? result.engines : [];
+            const kokoro = engines.find(engine => isBraseiroKokoroPackage(engine.packageName));
+            this.cachedKokoroEnginePackage = kokoro?.packageName || '';
+            return { engines, defaultEnginePackage: String(result.defaultEnginePackage || '') };
+          }
+
+          async resolveAndroidTtsEnginePackage(requested = '', knownEngines?: AndroidTtsEngineInfo[]) {
+            const raw = String(requested || '').trim();
+            if (!Capacitor.isNativePlatform()) return raw;
+
+            const needsKokoroResolution = isLegacyKokoroEngineToken(raw) || isBraseiroKokoroPackage(raw);
+            if (!needsKokoroResolution) return raw;
+
+            if (this.cachedKokoroEnginePackage && isBraseiroKokoroPackage(this.cachedKokoroEnginePackage)) {
+              return this.cachedKokoroEnginePackage;
+            }
+
+            const engines = knownEngines || (await this.listAndroidTtsEngines()).engines;
+            const kokoro = engines.find(engine => isBraseiroKokoroPackage(engine.packageName));
+            if (kokoro) {
+              this.cachedKokoroEnginePackage = kokoro.packageName;
+              return kokoro.packageName;
+            }
+            return raw;
+          }
+
+          async listAndroidTtsVoices(enginePackage = ''): Promise<AndroidTtsVoiceInfo[]> {
+            if (!Capacitor.isNativePlatform()) {
+              const voices = await this.browserVoices();
+              return voices.map(voice => ({ name: voice.name, locale: voice.lang, quality: 0, latency: 0, networkRequired: false, features: [] }));
+            }
+            const resolvedPackage = await this.resolveAndroidTtsEnginePackage(enginePackage);
+            const result = await NativeAndroidTts.listVoices({ enginePackage: resolvedPackage });
+            return Array.isArray(result.voices) ? result.voices : [];
+          }"""
+          if old_list not in s:
+              raise SystemExit('list engine/voice block missing')
+          s = s.replace(old_list, new_list, 1)
+
+          split_start = s.index("  private splitLocalNeural(")
+          play_start = s.index("  async playAndroidNarration(", split_start)
+          if split_start < 0 or play_start < 0:
+              raise SystemExit('local neural methods missing')
+          new_chunking = r"""  private normalizeLocalNeuralAudio(text: string) {
+            return String(text || '')
+              .normalize('NFC')
+              .replace(/\r/g, '')
+              .replace(/\n+/g, ' ')
+              .replace(/[\t ]+/g, ' ')
+              .trim();
+          }
+
+          private splitLocalNeural(text: string, target = 450, min = 250, max = 650) {
+            const normalized = this.normalizeLocalNeuralAudio(text);
+            const parts: Array<{ text: string; offset: number }> = [];
+            let cursor = 0;
+
+            const bestBoundary = (start: number, hardEnd: number, pattern: RegExp, floor: number) => {
+              const targetEnd = Math.min(hardEnd, start + target);
+              let best = -1;
+              let bestDistance = Number.POSITIVE_INFINITY;
+              for (let index = Math.max(start + 1, floor); index <= hardEnd; index += 1) {
+                if (!pattern.test(normalized[index - 1] || '')) continue;
+                const distance = Math.abs(index - targetEnd);
+                if (distance < bestDistance || (distance === bestDistance && index > best)) {
+                  best = index;
+                  bestDistance = distance;
+                }
+              }
+              return best;
+            };
+
+            while (cursor < normalized.length) {
+              while (cursor < normalized.length && /\s/.test(normalized[cursor])) cursor += 1;
+              if (cursor >= normalized.length) break;
+
+              const remaining = normalized.length - cursor;
+              if (remaining <= max) {
+                const tail = normalized.slice(cursor).trim();
+                if (tail) parts.push({ text: tail, offset: cursor });
+                break;
+              }
+
+              const hardEnd = Math.min(normalized.length, cursor + max);
+              let end = bestBoundary(cursor, hardEnd, /[.!?…]/, cursor + min);
+              if (end < 0) end = bestBoundary(cursor, hardEnd, /[;,]/, cursor + Math.floor(min * .75));
+              if (end < 0) end = bestBoundary(cursor, hardEnd, /\s/, cursor + Math.floor(min * .65));
+              if (end <= cursor) end = hardEnd;
+
+              const chunk = normalized.slice(cursor, end).trim();
+              if (chunk) parts.push({ text: chunk, offset: cursor });
+              cursor = end;
+            }
+
+            return parts;
+          }
+
+          """
+          # include normalize function too: remove existing normalize+split block
+          norm_start = s.rfind("  private normalizeLocalNeuralAudio(", 0, split_start)
+          if norm_start < 0:
+              raise SystemExit('normalize method missing')
+          s = s[:norm_start] + new_chunking + s[play_start:]
+
+          method_start = s.index("  async playAndroidNarration(")
+          method_end = s.index("\n  schedule(", method_start)
+          if method_start < 0 or method_end < 0:
+              raise SystemExit('playAndroidNarration block missing')
+          new_method = r"""  async playAndroidNarration(text: string, speed = 1, onEnded?: () => void, onChunkStart?: (chunk: string, index: number, durationMs?: number) => void, providedSession?: Session | null, onRangeStart?: (absoluteStart: number, absoluteEnd: number, requestId: string) => void, selection: AndroidTtsSelection = {}) {
+            if (!Capacitor.isNativePlatform()) await this.ready();
+
+            const resolvedEnginePackage = await this.resolveAndroidTtsEnginePackage(selection.enginePackage || '');
+            const resolvedSelection: AndroidTtsSelection = {
+              ...selection,
+              enginePackage: resolvedEnginePackage,
+              profile: isBraseiroKokoroPackage(resolvedEnginePackage) ? 'local-neural' : 'standard',
+            };
+
+            const session = providedSession && this.isCurrentSession(providedSession)
+              ? providedSession
+              : this.beginPlaybackSession('android-tts');
+            const generation = ++this.voiceSession;
+            this.stopCategory('Voz');
+            this.cancelBrowserSpeech();
+            this.duck(true);
+
+            const localNeural = isBraseiroKokoroPackage(resolvedEnginePackage);
+            const localRate = Math.min(1.2, Math.max(.5, resolvedSelection.localRate ?? 1.0));
+            const effectiveSpeed = localNeural ? localRate : speed;
+            const chapters = localNeural
+              ? [this.normalizeLocalNeuralAudio(text)]
+              : this.splitNarration(text);
+            const localSequenceParts = localNeural ? this.splitLocalNeural(chapters[0] || '') : [];
+
+            const startWaiters = new Map<string, () => void>();
+            let startListener: PluginListenerHandle | null = null;
+            let rangeListener: PluginListenerHandle | null = null;
+
+            try {
+              if (Capacitor.isNativePlatform()) {
+                const availability = await NativeAndroidTts.isAvailable({ enginePackage: resolvedEnginePackage });
+                if (!availability.available) throw new Error('O mecanismo TTS do Android não está instalado ou ainda não terminou de iniciar.');
+
+                startListener = await NativeAndroidTts.addListener('utteranceStart', event => {
+                  startWaiters.get(event.requestId)?.();
+                  if (localNeural && event.sequence && Number.isInteger(event.chunkIndex)) {
+                    const index = Number(event.chunkIndex);
+                    const part = localSequenceParts[index];
+                    if (part && generation === this.voiceSession && this.isCurrentSession(session)) {
+                      const estimatedMs = Math.round(part.text.length / (11 * Math.max(.55, effectiveSpeed)) * 1000);
+                      onChunkStart?.(part.text, index, estimatedMs);
+                    }
+                  }
+                });
+
+                rangeListener = await NativeAndroidTts.addListener('utteranceRange', event => {
+                  const absoluteStart = Number(event.absoluteStart ?? event.start ?? 0);
+                  const absoluteEnd = Number(event.absoluteEnd ?? event.end ?? absoluteStart);
+                  AudioDiagnostics.log({
+                    action: 'android-tts-range',
+                    channel: 'voice',
+                    level: 'info',
+                    message: `Voz Android alcançou ${absoluteStart}.`,
+                    backend: localNeural ? 'Braseiro Kokoro PT-BR' : 'Android TextToSpeech',
+                    details: event,
+                  });
+                  if (generation === this.voiceSession && this.isCurrentSession(session)) {
+                    onRangeStart?.(absoluteStart, absoluteEnd, event.requestId);
+                  }
+                });
+              }
+
+              if (Capacitor.isNativePlatform() && localNeural) {
+                if (!localSequenceParts.length) {
+                  if (this.isCurrentSession(session)) {
+                    onEnded?.();
+                    this.finishPlaybackSession('finished', session);
+                  }
+                  return;
+                }
+
+                const sequenceRequestId = `android-kokoro-sequence-${session.runId}-${crypto.randomUUID()}`;
+                await NativeAndroidTts.speakSequence({
+                  chunks: localSequenceParts.map(part => ({ text: part.text, offset: part.offset })),
+                  rate: effectiveSpeed,
+                  pitch: resolvedSelection.pitch ?? 1,
+                  language: resolvedSelection.language || 'pt-BR',
+                  voiceName: resolvedSelection.voiceName || '',
+                  enginePackage: resolvedEnginePackage,
+                  requestId: sequenceRequestId,
+                });
+
+                if (generation !== this.voiceSession || !this.isCurrentSession(session)) return;
+                onEnded?.();
+                this.finishPlaybackSession('finished', session);
+                return;
+              }
+
+              let globalOffset = 0;
+              let segmentIndex = 0;
+              for (const chapter of chapters) {
+                for (const part of this.splitAndroid(chapter)) {
+                  if (generation !== this.voiceSession || !this.isCurrentSession(session)) return;
+                  const estimatedMs = Math.round(part.text.length / (13 * Math.max(.55, effectiveSpeed)) * 1000);
+
+                  if (Capacitor.isNativePlatform()) {
+                    const requestId = `android-tts-${session.runId}-${segmentIndex}-${crypto.randomUUID()}`;
+                    let resolveStart!: () => void;
+                    let startObserved = false;
+                    const started = new Promise<void>(resolve => {
+                      resolveStart = () => { startObserved = true; resolve(); };
+                    });
+                    startWaiters.set(requestId, resolveStart);
+
+                    let speechError: unknown;
+                    const speaking = NativeAndroidTts.speak({
+                      text: part.text,
+                      rate: effectiveSpeed,
+                      pitch: resolvedSelection.pitch ?? 1,
+                      language: resolvedSelection.language || 'pt-BR',
+                      voiceName: resolvedSelection.voiceName || '',
+                      enginePackage: resolvedEnginePackage,
+                      requestId,
+                      offset: globalOffset + part.offset,
+                      queueMode: 'flush',
+                    }).catch(error => {
+                      speechError = error;
+                      resolveStart();
+                    });
+
+                    await Promise.race([started, delay(8000)]);
+                    startWaiters.delete(requestId);
+                    if (speechError) throw speechError;
+                    if (startObserved) onChunkStart?.(part.text, segmentIndex, estimatedMs);
+
+                    const watchdogMs = Math.min(
+                      90_000,
+                      Math.max(30_000, Math.round(part.text.length / (6 * Math.max(.65, effectiveSpeed)) * 1000) + 12_000),
+                    );
+                    let watchdogId = 0;
+                    const watchdog = new Promise<'watchdog'>(resolve => {
+                      watchdogId = window.setTimeout(async () => {
+                        await NativeAndroidTts.stop().catch(() => undefined);
+                        resolve('watchdog');
+                      }, watchdogMs);
+                    });
+                    const result = await Promise.race([speaking.then(() => 'done' as const), watchdog]);
+                    if (watchdogId) window.clearTimeout(watchdogId);
+                    if (result === 'watchdog') {
+                      AudioDiagnostics.log({
+                        action: 'android-tts-watchdog',
+                        channel: 'voice',
+                        level: 'warning',
+                        message: 'O Android não enviou onDone; o próximo trecho será iniciado.',
+                        backend: 'Android TextToSpeech',
+                      });
+                    }
+                    if (speechError) throw speechError;
+                  } else {
+                    await this.speakBrowserChunk(
+                      part.text,
+                      effectiveSpeed,
+                      () => onChunkStart?.(part.text, segmentIndex, estimatedMs),
+                      resolvedSelection,
+                    );
+                  }
+                  segmentIndex += 1;
+                }
+                globalOffset += chapter.length;
+              }
+
+              if (this.isCurrentSession(session)) {
+                onEnded?.();
+                this.finishPlaybackSession('finished', session);
+              }
+            } finally {
+              startWaiters.clear();
+              if (startListener) await startListener.remove().catch(() => undefined);
+              if (rangeListener) await rangeListener.remove().catch(() => undefined);
+              if (generation === this.voiceSession) {
+                this.androidUtterance = null;
+                this.duck(false);
+              }
+            }
+          }
+          """
+          s = s[:method_start] + new_method + s[method_end:]
+          audio.write_text(s, encoding='utf-8')
+
+          # ------------------------------------------------------------
+          # Persistent settings migration.
+          # ------------------------------------------------------------
+          store = root/'src/store/useAppStore.ts'
+          st = store.read_text(encoding='utf-8')
+          st = st.replace("  androidTtsLocalRate: 0.85,", "  androidTtsLocalRate: 1.0,")
+          st = st.replace("  androidTtsLocalPipelineVersion: 3,", "  androidTtsLocalPipelineVersion: 4,")
+
+          load_marker = "    if (stored) {\n      const migrated: Settings = {"
+          if load_marker not in st:
+              raise SystemExit('store load marker missing')
+          prep = """    if (stored) {
+              const storedEngine = String(stored.androidTtsEnginePackage || '');
+              const legacyKokoroEngine = storedEngine === 'com.braseiro.kokoro.ptbr'
+                || /db[\\s_-]*next|next[\\s_-]*gen|braseiro[\\s_-]*kokoro/i.test(storedEngine);
+              const migratedEngine = legacyKokoroEngine
+                ? 'com.k2fsa.sherpa.onnx.tts.engine.debug'
+                : storedEngine;
+              const migratedKokoro = migratedEngine === 'com.k2fsa.sherpa.onnx.tts.engine.debug'
+                || migratedEngine === 'com.k2fsa.sherpa.onnx.tts.engine';
+              const migrated: Settings = {"""
+          st = st.replace(load_marker, prep, 1)
+          st = st.replace(
+              "        androidTtsEnginePackage: String(stored.androidTtsEnginePackage || ''),",
+              "        androidTtsEnginePackage: migratedEngine,"
+          )
+          st = re.sub(
+              r"        androidTtsLocalRate: Number\(stored\.androidTtsLocalPipelineVersion \|\| 0\) < 3\n          \? 0\.85\n          : Math\.max\(0\.5, Math\.min\(1\.2, Number\(stored\.androidTtsLocalRate \|\| 0\.85\)\)\),\n        androidTtsLocalPipelineVersion: 3,\n        androidTtsProfile: stored\.androidTtsProfile === 'local-neural' \? 'local-neural' : 'standard',",
+              """        androidTtsLocalRate: Number(stored.androidTtsLocalPipelineVersion || 0) < 4
+                    ? 1.0
+                    : Math.max(0.5, Math.min(1.2, Number(stored.androidTtsLocalRate || 1.0))),
+                  androidTtsLocalPipelineVersion: 4,
+                  androidTtsProfile: migratedKokoro ? 'local-neural' : 'standard',""",
+              st,
+              count=1,
+          )
+          store.write_text(st, encoding='utf-8')
+
+          # ------------------------------------------------------------
+          # Settings UI: automatic backend/profile + real voice names.
+          # ------------------------------------------------------------
+          settings = root/'src/screens/SettingsScreenV2.tsx'
+          ui = settings.read_text(encoding='utf-8')
+          ui = ui.replace(
+              "import { audioEngineV2, type AndroidTtsEngineInfo, type AndroidTtsVoiceInfo } from '../services/audioEngineV2';",
+              "import { audioEngineV2, isBraseiroKokoroPackage, isLegacyKokoroEngineToken, type AndroidTtsEngineInfo, type AndroidTtsVoiceInfo } from '../services/audioEngineV2';"
+          )
+
+          refresh_start = ui.index("  const refreshAndroidTts = async")
+          refresh_end = ui.index("\n\n  useEffect(() => {", refresh_start)
+          if refresh_start < 0 or refresh_end < 0:
+              raise SystemExit('refreshAndroidTts block missing')
+          refresh = r"""  const refreshAndroidTts = async (requestedEngine = settings.androidTtsEnginePackage || '') => {
+            setAndroidTtsLoading(true);
+            try {
+              const engineResult = await audioEngineV2.listAndroidTtsEngines();
+              setAndroidTtsEngines(engineResult.engines);
+              setAndroidTtsDefaultEngine(engineResult.defaultEnginePackage || '');
+
+              const resolvedEngine = await audioEngineV2.resolveAndroidTtsEnginePackage(
+                requestedEngine,
+                engineResult.engines,
+              );
+              const engineExists = !resolvedEngine
+                || engineResult.engines.some(item => item.packageName === resolvedEngine);
+              const finalEngine = engineExists ? resolvedEngine : '';
+              const kokoro = isBraseiroKokoroPackage(finalEngine);
+
+              const voices = await audioEngineV2.listAndroidTtsVoices(finalEngine);
+              setAndroidTtsVoices(voices);
+
+              const currentVoice = String(settings.androidTtsVoiceName || '');
+              const voiceStillExists = currentVoice
+                ? voices.some(voice => voice.name === currentVoice)
+                : false;
+              const preferredRealVoice = voices.find(voice => /^pt(?:-|_)/i.test(voice.locale || '')) || voices[0];
+
+              const migratedFromLegacy = isLegacyKokoroEngineToken(requestedEngine);
+              const nextVoiceName = voiceStillExists
+                ? currentVoice
+                : (kokoro && preferredRealVoice ? preferredRealVoice.name : '');
+              const selectedVoice = voices.find(voice => voice.name === nextVoiceName);
+
+              const needsUpdate =
+                finalEngine !== String(settings.androidTtsEnginePackage || '')
+                || settings.androidTtsProfile !== (kokoro ? 'local-neural' : 'standard')
+                || (kokoro && Number(settings.androidTtsLocalRate ?? 1) !== 1 && migratedFromLegacy)
+                || nextVoiceName !== currentVoice
+                || (selectedVoice?.locale && selectedVoice.locale !== settings.androidTtsLanguage);
+
+              if (needsUpdate) {
+                await update({
+                  androidTtsEnginePackage: finalEngine,
+                  androidTtsProfile: kokoro ? 'local-neural' : 'standard',
+                  androidTtsLocalRate: kokoro && migratedFromLegacy ? 1.0 : (settings.androidTtsLocalRate ?? 1.0),
+                  androidTtsVoiceName: nextVoiceName,
+                  ...(selectedVoice?.locale ? { androidTtsLanguage: selectedVoice.locale } : {}),
+                });
+              }
+            } catch (error: any) {
+              setVoiceState(error?.message || 'Não foi possível consultar as engines TTS instaladas.');
+              setAndroidTtsVoices([]);
+            } finally {
+              setAndroidTtsLoading(false);
+            }
+          };"""
+          ui = ui[:refresh_start] + refresh + ui[refresh_end:]
+
+          ui = ui.replace(
+              "            localRate: settings.androidTtsLocalRate ?? 0.85,",
+              "            localRate: settings.androidTtsLocalRate ?? 1.0,"
+          )
+
+          old_engine_change = """                  onChange={async e => {
+                    const enginePackage = e.target.value;
+                    await update({ androidTtsEnginePackage: enginePackage, androidTtsVoiceName: '' });
+                    await refreshAndroidTts(enginePackage);
+                  }}"""
+          new_engine_change = """                  onChange={async e => {
+                    const enginePackage = e.target.value;
+                    const kokoro = isBraseiroKokoroPackage(enginePackage);
+                    await update({
+                      androidTtsEnginePackage: enginePackage,
+                      androidTtsVoiceName: '',
+                      androidTtsProfile: kokoro ? 'local-neural' : 'standard',
+                      ...(kokoro ? { androidTtsLocalRate: 1.0 } : {}),
+                    });
+                    await refreshAndroidTts(enginePackage);
+                  }}"""
+          if old_engine_change not in ui:
+              raise SystemExit('engine onChange block missing')
+          ui = ui.replace(old_engine_change, new_engine_change, 1)
+
+          profile_start = ui.index("              <label>\n                Perfil da engine")
+          voice_label = ui.index("              <label>\n                Voz da engine", profile_start)
+          if profile_start < 0 or voice_label < 0:
+              raise SystemExit('profile UI block missing')
+          profile_ui = r"""              <div className="p-3 border border-border rounded text-sm">
+                <b>{isBraseiroKokoroPackage(settings.androidTtsEnginePackage || '')
+                  ? 'Braseiro Kokoro PT-BR · neural'
+                  : 'Android TTS padrão'}</b>
+                <p className="text-xs text-text-secondary mt-1">
+                  {isBraseiroKokoroPackage(settings.androidTtsEnginePackage || '')
+                    ? 'Perfil neural automático: blocos 250–650 (alvo ~450), primeira fala QUEUE_FLUSH e continuação QUEUE_ADD somente após onDone real.'
+                    : 'Samsung, Google e outras engines usam o fluxo Android padrão.'}
+                </p>
+              </div>
+              {isBraseiroKokoroPackage(settings.androidTtsEnginePackage || '') && <label>
+                Velocidade Kokoro: {(settings.androidTtsLocalRate ?? 1.0).toFixed(2)}×
+                <input type="range" min=".5" max="1.2" step=".05" value={settings.androidTtsLocalRate ?? 1.0} onChange={e => void update({ androidTtsLocalRate: Number(e.target.value) })} className="w-full" />
+                <p className="text-xs text-text-secondary mt-1">1,00× é neutro. A velocidade é aplicada uma única vez pela API TextToSpeech.</p>
+              </label>}
+          """
+          ui = ui[:profile_start] + profile_ui + ui[voice_label:]
+
+          settings.write_text(ui, encoding='utf-8')
+
+          # ------------------------------------------------------------
+          # Android package visibility: current Sherpa packages only.
+          # ------------------------------------------------------------
+          manifest = root/'android/app/src/main/AndroidManifest.xml'
+          m = manifest.read_text(encoding='utf-8')
+          m = re.sub(r'\s*<package android:name="com\.braseiro\.kokoro\.ptbr"\s*/>', '', m)
+
+          packages = [
+              'com.k2fsa.sherpa.onnx.tts.engine.debug',
+              'com.k2fsa.sherpa.onnx.tts.engine',
+          ]
+          if '<queries>' not in m:
+              queries = '<queries>\n        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>\n'
+              for package in packages:
+                  queries += f'        <package android:name="{package}" />\n'
+              queries += '    </queries>\n\n    '
+              m = m.replace('<application', queries + '<application', 1)
+          else:
+              insert = ''
+              for package in packages:
+                  if f'android:name="{package}"' not in m:
+                      insert += f'\n        <package android:name="{package}" />'
+              if insert:
+                  m = m.replace('<queries>', '<queries>' + insert, 1)
+
+          manifest.write_text(m, encoding='utf-8')
+
+          # ------------------------------------------------------------
+          # Version only; no gameplay mechanics touched.
+          # ------------------------------------------------------------
+          gradle = root/'android/app/build.gradle'
+          g = gradle.read_text(encoding='utf-8')
+          g = g.replace('versionCode 303019', 'versionCode 303020')
+          g = g.replace('versionName "3.3.19"', 'versionName "3.3.20"')
+          gradle.write_text(g, encoding='utf-8')
+
+          package = root/'package.json'
+          data = json.loads(package.read_text(encoding='utf-8'))
+          data['version'] = '3.3.20'
+          package.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          # ------------------------------------------------------------
+          # Focused verifier.
+          # ------------------------------------------------------------
+          verify = root/'scripts/verify-runtime-3320.mjs'
+          verify.write_text(r"""import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+
+          const java = fs.readFileSync(new URL('../android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java', import.meta.url), 'utf8');
+          const audio = fs.readFileSync(new URL('../src/services/audioEngineV2.ts', import.meta.url), 'utf8');
+          const settings = fs.readFileSync(new URL('../src/screens/SettingsScreenV2.tsx', import.meta.url), 'utf8');
+          const store = fs.readFileSync(new URL('../src/store/useAppStore.ts', import.meta.url), 'utf8');
+          const manifest = fs.readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+          const gradle = fs.readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
+
+          assert.match(java, /com\.k2fsa\.sherpa\.onnx\.tts\.engine\.debug/);
+          assert.match(java, /com\.k2fsa\.sherpa\.onnx\.tts\.engine"/);
+          assert.doesNotMatch(java, /"com\.braseiro\.kokoro\.ptbr"\.equals\(configuredEnginePackage\)/);
+          assert.match(java, /Braseiro Kokoro PT-BR · neural/);
+          assert.match(java, /Set<Voice> available = tts\.getVoices\(\)/);
+          assert.match(java, /current\.setVoice\(realVoice\)/);
+          assert.doesNotMatch(java, /ptbr_pf_dora|ptbr_pm_alex|ptbr_pm_santa/);
+          assert.match(java, /activeSequenceIndex == 0[\s\S]*QUEUE_FLUSH[\s\S]*QUEUE_ADD/);
+          assert.match(java, /Only a real onDone reaches here/);
+          assert.match(java, /activeSequenceRate = call\.getFloat\("rate", 1\.0f\)/);
+          assert.doesNotMatch(java, /playSilentUtterance|Olá\./);
+
+          assert.match(audio, /target = 450, min = 250, max = 650/);
+          assert.match(audio, /isBraseiroKokoroPackage\(resolvedEnginePackage\)/);
+          assert.doesNotMatch(audio, /\/kokoro\/i\.test/);
+          assert.match(audio, /resolvedSelection\.localRate \?\? 1\.0/);
+          assert.match(audio, /await NativeAndroidTts\.speakSequence/);
+          assert.doesNotMatch(audio.slice(audio.indexOf('if \(Capacitor\.isNativePlatform\(\) && localNeural\)'), audio.indexOf('let globalOffset')), /watchdog|NativeAndroidTts\.stop/);
+
+          assert.match(settings, /Braseiro Kokoro PT-BR · neural/);
+          assert.match(settings, /1,00× é neutro/);
+          assert.match(settings, /voice\.name === currentVoice/);
+          assert.match(settings, /androidTtsVoiceName: nextVoiceName/);
+
+          assert.match(store, /androidTtsLocalRate: 1\.0/);
+          assert.match(store, /androidTtsLocalPipelineVersion: 4/);
+          assert.match(store, /com\.k2fsa\.sherpa\.onnx\.tts\.engine\.debug/);
+          assert.match(store, /migratedKokoro \? 'local-neural' : 'standard'/);
+
+          assert.match(manifest, /com\.k2fsa\.sherpa\.onnx\.tts\.engine\.debug/);
+          assert.match(manifest, /com\.k2fsa\.sherpa\.onnx\.tts\.engine/);
+          assert.doesNotMatch(manifest, /com\.braseiro\.kokoro\.ptbr/);
+
+          assert.match(gradle, /versionCode 303020/);
+          assert.match(gradle, /versionName "3\.3\.20"/);
+
+          console.log('PASS runtime-3320: current Braseiro Kokoro/Sherpa integration, real voices, migration, strict onDone sequence, no neural watchdog.');
+          """.replace(/^          /gm, ''), encoding='utf-8')
+          PY
+
+          cd work
+          node scripts/verify-runtime-3320.mjs
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies and regression gates
+        shell: bash
+        working-directory: ${{ github.workspace }}/work
+        run: |
+          set -euo pipefail
+          npm config set registry https://registry.npmjs.org/
+          npm ci --no-audit --no-fund
+          npm run verify:runtime-3319
+          npm run verify:rules
+          node scripts/verify-runtime-3320.mjs
+
+      - name: Build web and sync Android
+        shell: bash
+        working-directory: ${{ github.workspace }}/work
+        run: |
+          set -euo pipefail
+          npm run android:sync
+          test -f android/app/src/main/assets/public/index.html
+          grep -R -q "Braseiro Kokoro PT-BR · neural" android/app/src/main/assets/public/assets
+          grep -R -q "1,00× é neutro" android/app/src/main/assets/public/assets
+          grep -q "com.k2fsa.sherpa.onnx.tts.engine.debug" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -q "com.k2fsa.sherpa.onnx.tts.engine" android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          ! grep -q '"com.braseiro.kokoro.ptbr".equals' android/app/src/main/java/com/braseiro/forbiddenlands/AndroidTtsPlugin.java
+          grep -q "versionCode 303020" android/app/build.gradle
+          grep -q 'versionName "3.3.20"' android/app/build.gradle
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile and assemble
+        shell: bash
+        working-directory: ${{ github.workspace }}/work/android
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:processDebugMainManifest :app:processDebugResources :app:compileDebugKotlin :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace --no-daemon | tee "$GITHUB_WORKSPACE/GRADLE_BUILD.txt"
+          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | sort | head -1)"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/$APK_NAME"
+
+      - name: Validate APK and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "$APK_NAME" > APK_ZIP_TEST.txt
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/aapt" dump badging "$APK_NAME" | tee APK_BADGING.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK_NAME" | tee APK_SIGNATURE.txt
+          grep -q "package: name='com.braseiro.forbiddenlands'" APK_BADGING.txt
+          grep -q "versionCode='303020'" APK_BADGING.txt
+          grep -q "versionName='3.3.20'" APK_BADGING.txt
+          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
+
+          (cd work && zip -qr "$GITHUB_WORKSPACE/$SOURCE_OUT" . -x 'node_modules/*' 'android/.gradle/*' 'android/app/build/*')
+          unzip -t "$SOURCE_OUT" > SOURCE_OUT_ZIP_TEST.txt
+          sha256sum "$SOURCE_OUT" > "$SOURCE_OUT.sha256"
+
+      - name: Upload validated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: forbidden-lands-3.3.20-current-kokoro
+          compression-level: 0
+          retention-days: 7
+          path: |
+            BRASEIRO_FORBIDDEN_LANDS_3.3.20.apk
+            BRASEIRO_FORBIDDEN_LANDS_3.3.20.apk.sha256
+            Braseiro_Forbidden_Lands_3.3.20_CURRENT_KOKORO_ANDROID_STUDIO.zip
+            Braseiro_Forbidden_Lands_3.3.20_CURRENT_KOKORO_ANDROID_STUDIO.zip.sha256
+            APK_BADGING.txt
+            APK_SIGNATURE.txt
+            APK_ZIP_TEST.txt
+            SOURCE_OUT_ZIP_TEST.txt
+            GRADLE_BUILD.txt
+
+      - name: Publish release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="forbidden-lands-3.3.20-current-kokoro"
+          gh release delete "$TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$TAG"             "$APK_NAME"             "$APK_NAME.sha256"             "$SOURCE_OUT"             "$SOURCE_OUT.sha256"             --title "Forbidden Lands 3.3.20 — Current Braseiro Kokoro"             --notes "TTS-only hotfix. Uses installed Sherpa/DB Next-gen engine packages com.k2fsa.sherpa.onnx.tts.engine.debug or .engine, canonical label Braseiro Kokoro PT-BR · neural, real TextToSpeech.voices/setVoice, automatic legacy migration, 250–650 char chunks target 450, first QUEUE_FLUSH then QUEUE_ADD only after real onDone, 1.00x neutral local speed, no Kokoro inference watchdog. Gameplay unchanged."
