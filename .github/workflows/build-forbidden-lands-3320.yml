@@ -626,9 +626,7 @@ jobs:
                   activeOffset = activeSequenceOffsets.get(activeSequenceIndex);
 
                   Bundle params = new Bundle();
-                  int queueMode = activeSequenceIndex == 0
-                          ? TextToSpeech.QUEUE_FLUSH
-                          : TextToSpeech.QUEUE_ADD;
+                  int queueMode = activeSequenceIndex == 0 ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD;
                   int result;
                   try {
                       result = tts.speak(text, queueMode, params, activeUtteranceId);
