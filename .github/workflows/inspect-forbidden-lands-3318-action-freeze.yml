@@ -1,6 +1,10 @@
 name: Inspect Forbidden Lands 3.3.18 Action Freeze
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/inspect-forbidden-lands-3318-action-freeze.yml"
   workflow_dispatch:
 
 permissions:
