@@ -781,8 +781,8 @@ jobs:
                               return;
                           }
 
-                          // Only a real onDone reaches here. No timer/watchdog
-                          // advances the Kokoro sequence.
+                          // Strict Kokoro continuation: ONLY onDone starts the next block.
+                          // Only a real onDone reaches here. No timer/watchdog advances the Kokoro sequence.
                           if (activeSequenceIndex + 1 < activeSequenceTexts.size()) {
                               activeSequenceIndex += 1;
                               activeUtteranceId = null;
@@ -1356,6 +1356,22 @@ jobs:
           g = g.replace('versionName "3.3.19"', 'versionName "3.3.20"')
           gradle.write_text(g, encoding='utf-8')
 
+          version_ts = root/'src/version.ts'
+          if version_ts.exists():
+              v = version_ts.read_text(encoding='utf-8')
+              v = v.replace("APP_VERSION = '3.3.19'", "APP_VERSION = '3.3.20'")
+              v = v.replace('ANDROID_VERSION_CODE = 303019', 'ANDROID_VERSION_CODE = 303020')
+              version_ts.write_text(v, encoding='utf-8')
+
+          inherited_verify = root/'scripts/verify-runtime-3319.mjs'
+          if inherited_verify.exists():
+              inherited = inherited_verify.read_text(encoding='utf-8')
+              inherited = inherited.replace(
+                  """['version_3319', version.includes("APP_VERSION = '3.3.19'") && version.includes('ANDROID_VERSION_CODE = 303019')]""",
+                  """['version_3319', version.includes("APP_VERSION = '3.3.20'") && version.includes('ANDROID_VERSION_CODE = 303020')]"""
+              )
+              inherited_verify.write_text(inherited, encoding='utf-8')
+
           package = root/'package.json'
           data = json.loads(package.read_text(encoding='utf-8'))
           data['version'] = '3.3.20'
@@ -1410,6 +1426,9 @@ jobs:
 
           assert.match(gradle, /versionCode 303020/);
           assert.match(gradle, /versionName "3\.3\.20"/);
+          const version = fs.readFileSync(new URL('../src/version.ts', import.meta.url), 'utf8');
+          assert.match(version, /APP_VERSION = '3\.3\.20'/);
+          assert.match(version, /ANDROID_VERSION_CODE = 303020/);
 
           console.log('PASS runtime-3320: current Braseiro Kokoro/Sherpa integration, real voices, migration, strict onDone sequence, no neural watchdog.');
           """, encoding='utf-8')
