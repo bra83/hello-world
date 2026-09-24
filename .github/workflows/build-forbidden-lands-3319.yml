@@ -11,11 +11,11 @@ permissions:
   contents: write
 
 env:
-  SOURCE_SHA256: "187d87cb9d0ec722eb4e1ce237ea0d2c8791fddb48673c25bc8b62c9c6989b73"
+  SOURCE_SHA256: "441fd6e9c0f667bc78a69c5699c371163de52087fd796b0d7ffa3afd60b159b1"
   SOURCE_NAME: "Braseiro_Forbidden_Lands_3.3.19_ACTION_TTS_ISOLATION_ANDROID_STUDIO.zip"
   FIRE_API: "https://api.firestorage.ai/dev/file"
-  SHARE_ID: "MCKwS9BK3M1l"
-  FILE_ID: "01a0d25b4c9d73d18baed089e85c0429"
+  SHARE_ID: "2sonjo9_IOEG"
+  FILE_ID: "01a0d25ef27e77b1b77fb761c277ca45"
   APK_NAME: "BRASEIRO_FORBIDDEN_LANDS_3.3.19.apk"
   ANDROID_HOME: "/usr/local/lib/android/sdk"
   ANDROID_SDK_ROOT: "/usr/local/lib/android/sdk"
