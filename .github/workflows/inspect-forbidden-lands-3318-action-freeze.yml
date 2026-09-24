@@ -93,6 +93,40 @@ jobs:
           print('\n'.join(copied[:500]))
           PY
 
+      - name: Print focused source contexts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re
+
+          targets=[
+            'work/src/screens/AdventureScreenV3.tsx',
+            'work/src/services/audioEngineV2.ts',
+            'work/src/store/useAppStore.ts',
+            'work/src/services/NarrativeDirectorService.ts',
+          ]
+          patterns=[
+            r'action', r'aç[aã]o', r'suggest', r'preset', r'quick',
+            r'submit', r'busy', r'loading', r'processing', r'pending',
+            r'speak', r'tts', r'narrat', r'Gemini', r'await'
+          ]
+
+          for path in targets:
+            if not os.path.isfile(path): continue
+            lines=open(path,encoding='utf-8',errors='ignore').read().splitlines()
+            hits=set()
+            for i,line in enumerate(lines):
+              if any(re.search(p,line,re.I) for p in patterns):
+                for j in range(max(0,i-10),min(len(lines),i+18)):
+                  hits.add(j)
+            print('\n\n===== '+path+' =====')
+            prev=-2
+            for i in sorted(hits):
+              if i>prev+1: print(f'\n--- around line {i+1} ---')
+              print(f'{i+1:5d}: {lines[i]}')
+              prev=i
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: forbidden-lands-3318-action-freeze-inspection
