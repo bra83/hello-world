@@ -25,7 +25,12 @@ runtime_src = bundle / "runtime"
 schema_src = bundle / "schema/adventure-module.schema.json"
 modules_src = bundle / "modules"
 
-for p in (runtime_src / "adventure_engine.js", runtime_src / "cyberpunk_adventure_controller.js", schema_src, modules_src / "index.json"):
+for p in (
+    runtime_src / "adventure_engine.js",
+    runtime_src / "cyberpunk_adventure_controller.js",
+    schema_src,
+    modules_src / "index.json",
+):
     if not p.is_file():
         raise SystemExit(f"missing adventure engine source: {p}")
 
@@ -42,6 +47,7 @@ for p in data_dest.glob("*.json"):
     json.loads(p.read_text(encoding="utf-8"))
 
 s = sheets.read_text(encoding="utf-8")
+
 import_line = "import {CyberpunkAdventureController} from './cyberpunk_adventure_controller.js';"
 if import_line not in s:
     anchor = "import {ensureLivingWorldV3State,livingWorldMasterContext,livingWorldPlayerBrief,consumeLivingWorldMasterEvents} from '../adapter/cpred_living_world_v3.js';"
@@ -63,17 +69,17 @@ if "await this.adventureController.init();" not in s:
     s = s.replace(init_anchor, "await this.adventureController.init();\n    " + init_anchor, 1)
 
 old_world = "sessionWorldContext(c=this.character()){if(!c)return'';c.campaignState=c.campaignState||{};c.campaignState.worldSystems=c.campaignState.worldSystems||{};c.campaignState.worldSystems.livingWorld=ensureLivingWorldV3State(c.campaignState.worldSystems.livingWorld||{});const p=c.worldPosition||{},w=c.campaignState.worldSystems,clock=c.campaignState.worldClock||{},locationId=p.mode==='interior'?(p.poiCode||p.sceneId||p.locationId||p.district):(p.poiCode||p.district||'Night City');return livingWorldMasterContext(w.livingWorld,{clock,locationId,weather:w.weather,playerName:c.name||'Edgerunner'})}"
-if "ADVENTURE_ENGINE_CONTEXT" not in s:
+if "buildContextText(c)" not in s:
     if old_world not in s:
         raise SystemExit("R572_WORLD_CONTEXT_ANCHOR_NOT_FOUND")
     new_world = "sessionWorldContext(c=this.character()){if(!c)return'';c.campaignState=c.campaignState||{};c.campaignState.worldSystems=c.campaignState.worldSystems||{};c.campaignState.worldSystems.livingWorld=ensureLivingWorldV3State(c.campaignState.worldSystems.livingWorld||{});const p=c.worldPosition||{},w=c.campaignState.worldSystems,clock=c.campaignState.worldClock||{},locationId=p.mode==='interior'?(p.poiCode||p.sceneId||p.locationId||p.district):(p.poiCode||p.district||'Night City');const base=livingWorldMasterContext(w.livingWorld,{clock,locationId,weather:w.weather,playerName:c.name||'Edgerunner'}),adventure=this.adventureController?.buildContextText(c)||'';return adventure?base+'\\n\\n'+adventure:base}"
     s = s.replace(old_world, new_world, 1)
 
-session_anchor = "c.campaignState.session={status:'active',campaignId:\`campaign-\${seed}\`,adventureSeed:seed,startPoi:startPoi?.code||null,startedAt:new Date().toISOString(),lastAction:'',currentNarration:runtime.configured?this.openingNarration():'MODO LOCAL: chave Gemini não configurada. Abra Mais → Áudio para configurar a API antes de iniciar a aventura.',history:[],sceneImages:{},recommendedActions:this.localRecommendedActions(c),narrationSource:runtime.configured?'pending':'local',narrativeError:null};"
-if "startDefault({startPoi" not in s:
-    if session_anchor not in s:
+if "await this.adventureController.startDefault({startPoi});" not in s:
+    pattern = r"(c\.campaignState\.session=\{status:'active',campaignId:.*?narrativeError:null\};)"
+    s, n = re.subn(pattern, r"\1\n    await this.adventureController.startDefault({startPoi});", s, count=1)
+    if n != 1:
         raise SystemExit("R572_NEW_ADVENTURE_ANCHOR_NOT_FOUND")
-    s = s.replace(session_anchor, session_anchor + "\n    await this.adventureController.startDefault({startPoi});", 1)
 
 old_restart = "this.sessionState(c).status='ready';await this.newAdventure();this.toast('Aventura reiniciada com o mesmo personagem.')"
 if "await this.adventureController.reset();" not in s:
@@ -92,20 +98,28 @@ history_anchor = "session.history.push({at:new Date().toLocaleString('pt-BR'),ki
 if "adventureRejected" not in s:
     if history_anchor not in s:
         raise SystemExit("R572_HISTORY_ANCHOR_NOT_FOUND")
-    s = s.replace(history_anchor, "session.history.push({at:new Date().toLocaleString('pt-BR'),kind:mode,narration,action:text,source,reason,adventureAccepted:adventureReview?.accepted?.length||0,adventureRejected:adventureReview?.rejected?.length||0});", 1)
+    s = s.replace(
+        history_anchor,
+        "session.history.push({at:new Date().toLocaleString('pt-BR'),kind:mode,narration,action:text,source,reason,adventureAccepted:adventureReview?.accepted?.length||0,adventureRejected:adventureReview?.rejected?.length||0});",
+        1,
+    )
 
-state_anchor = "if(stateLabel)stateLabel.textContent=\`\${s.status==='active'?'aventura ativa':'pronto'} • dia \${clock.day||1} • \${hh}:\${mm}\`;"
 if "advDebug=this.adventureController" not in s:
-    if state_anchor not in s:
+    pattern = r"if\(stateLabel\)stateLabel\.textContent=.*?;"
+    replacement = "const advDebug=this.adventureController?.debugState(c)||{};if(stateLabel)stateLabel.textContent=(s.status==='active'?'aventura ativa':'pronto')+' • '+(advDebug.adventureId||'sem módulo')+' • dia '+(clock.day||1)+' • '+hh+':'+mm;"
+    s, n = re.subn(pattern, replacement, s, count=1)
+    if n != 1:
         raise SystemExit("R572_RENDER_STATE_ANCHOR_NOT_FOUND")
-    replacement = "const advDebug=this.adventureController?.debugState(c)||{};if(stateLabel)stateLabel.textContent=\`\${s.status==='active'?'aventura ativa':'pronto'} • \${advDebug.adventureId||'sem módulo'} • dia \${clock.day||1} • \${hh}:\${mm}\`;"
-    s = s.replace(state_anchor, replacement, 1)
 
 render_anchor = "render(){this.renderSheet();this.renderInventory();this.renderJournal();this.renderSession()}"
 if "globalThis.BraseiroAdventureDebug" not in s:
     if render_anchor not in s:
         raise SystemExit("R572_RENDER_ANCHOR_NOT_FOUND")
-    s = s.replace(render_anchor, "render(){globalThis.BraseiroAdventureDebug=()=>this.adventureController?.debugState(this.character())||{};this.renderSheet();this.renderInventory();this.renderJournal();this.renderSession()}", 1)
+    s = s.replace(
+        render_anchor,
+        "render(){globalThis.BraseiroAdventureDebug=()=>this.adventureController?.debugState(this.character())||{};this.renderSheet();this.renderInventory();this.renderJournal();this.renderSession()}",
+        1,
+    )
 
 sheets.write_text(s, encoding="utf-8")
 
@@ -127,7 +141,7 @@ checks = [
     import_line,
     "this.adventureController=new CyberpunkAdventureController",
     "await this.adventureController.init();",
-    "ADVENTURE_ENGINE_CONTEXT",
+    "buildContextText(c)",
     "await this.adventureController.startDefault({startPoi});",
     "await this.adventureController.reset();",
     "adventureReview=mode==='PLAYER_ACTION'",
