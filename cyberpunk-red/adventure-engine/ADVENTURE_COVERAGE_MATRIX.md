@@ -6,13 +6,13 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 |---|---|---|---|
 | Night City Sandbox | Dynamic World Engine start; persistent emergent state | Engine unit tests | **IMPLEMENTED** |
 | Red Chrome Cargo | Hornet/Hammerhead locations, cargo clue/secret, boarding/NET/combat/extraction, Rules Engine DVs | Validation + deterministic start + sealed secret + event tests | **IMPLEMENTED** |
-| Hope Reborn — campaign spine | Six-mission ordered continuity with persistent handoff flags; mission internals remain separate modules | Campaign start/order/completion tests | **PARTIAL** |
+| Hope Reborn — campaign spine | Six-mission ordered continuity with persistent handoff flags and all six detailed mission modules | Campaign start/order/completion tests + per-mission suites | **IMPLEMENTED** |
 | Hope Reborn — The Angel's Share | Branching Blank investigation, disaster/rescue branches, Pickup Game choice, A New Hope handoff | Validation + sealed knowledge + optional rescue + agency tests | **IMPLEMENTED** |
 | Hope Reborn — Real Estate Rumble | Haunted House/Death Maze, GRAF3 guard branch, Bozo escalation, bouquet invariant, chase/combat, Happy/Sad Jack | Validation + agency + 0d6 bouquet + resolution/handoff tests | **IMPLEMENTED** |
 | Hope Reborn — Welcome to the Neighborhood | Open five-job hub across one month; The Shark multi-route hostage rescue; Boys' Night Out timed rescue; Wheels on Fire roller derby; Turf War defense/betrayal; Love Lies Dying timed investigation/rescue; The Report gated by all five jobs | Validation + open-order + Rules authority + hidden timer + betrayal failure + report/payment/handoff tests | **IMPLEMENTED** |
 | Hope Reborn — The Devil's Cut | Player-owned Case/Heist/Escape; social/stealth/cunning/NET; Mira intel sealed; dual resolution and dynamic bottle bonus | Validation + agency + sealed intel + resolution/handoff tests | **IMPLEMENTED** |
 | Hope Reborn — Hope's Calling!!! | Open preparation Task Hub; supply recovery; Random/The Gentleman social-or-combat branch; electrical/NET sabotage investigation; Vox/Populi identities sealed; opening-night RCL assault with opposed Bar Brawl and timed chaos; unfinished tasks remain consequential | Validation + open-order + secret gating + Rules authority + opening-resolution tests | **IMPLEMENTED** |
-| Hope Reborn — Ripping the Ripper | Campaign finale flag exists; detailed branching finale conversion pending | Campaign completion only | **PARTIAL** |
+| Hope Reborn — Ripping the Ripper | Evidence hook; Busan Back Door con; Redline/setup/flip; direct Bullets are Simpler assault; walkway/east wing/bridge/maze/man cave; path switching; early-death A Different Ending; Hope and Home; final campaign flag | Validation + branch ownership + sealed Rocklin target + Rules authority + early-death diversion + campaign completion tests | **IMPLEMENTED** |
 | Tales of the RED / Street Stories | Legacy/source content exists; universal module conversion pending per mission | Not yet universal-engine tested | **PARTIAL** |
 | Elflines Online | Source present; extraction pending | No universal-module test | **PARTIAL** |
 | Elflines Online EP1 | Source present; extraction pending | No universal-module test | **PARTIAL** |
@@ -25,11 +25,15 @@ R5.72 verifies event location restrictions, repeatable-event operation keys, UNT
 
 ## Hope Reborn invariants
 
-Hope Reborn is six interconnected missions intended to build on one another. The Adventure Engine persists sequence independently of narration, but does not assume each mission is linear: optional Beats and player-selected branches remain explicit. Rumors/Infobox knowledge are gated information, not free narrator knowledge. The Devil's Cut preserves its social/stealth/cunning emphasis rather than being normalized into combat.
+Hope Reborn is six interconnected missions intended to build on one another. All six missions now have detailed AdventureModules. The Adventure Engine persists sequence independently of narration and does not assume each mission is linear: optional Beats, player-selected branches and path switching remain explicit. Rumors/Infobox knowledge are gated information, not free narrator knowledge. The Devil's Cut preserves its social/stealth/cunning emphasis rather than being normalized into combat.
 
 ### Hope's Calling!!!
 
 The rebuilt Forlorn Hope is modeled as an open preparation hub rather than a forced checklist. Supply recovery, Random's debt/The Gentleman and sabotage investigation can be approached in player-selected order. Vox/Populi's Anne/Arthur identities remain GM-only until evidence supports revelation. Mechanical checks remain Rules Engine authority. Opening Night preserves consequences of unfinished tasks and delegates the RCL assault, opposed Bar Brawl checks and timed chaos sequence to Rules Engine; the Adventure Engine only persists facts, branches and outcome.
+
+### Ripping the Ripper
+
+The finale begins from evidence tying Ripper to the old Hope's destruction and preserves the book's central player choice: Busan Back Door or Bullets are Simpler. The con path keeps its real Rocklin destination sealed until selected and delegates social/Forgery/Interface/combat mechanics to Rules Engine. The direct path models the hideout beats without turning them into a mandatory corridor. Violence remains possible during the con and the Crew can switch tracks. If Ripper dies before the intended climax, the engine immediately diverts to A Different Ending instead of forcing unused beats. Successful final resolution sets both the mission-complete and Hope-Reborn-campaign-complete flags.
 
 ## Source inventory verified in Drive
 
