@@ -7,6 +7,7 @@ on:
     paths:
       - "cyberpunk-red/adventure-engine/**"
       - "cyberpunk-red/patches/r572_adventure_engine_core.py"
+      - "cyberpunk-red/patches/r572_adventure_engine_hardening.py"
       - ".github/workflows/cpred-r572-adventure-engine-tests.yml"
   workflow_dispatch:
 
@@ -16,22 +17,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Pure Adventure Engine tests
-        run: node --test cyberpunk-red/adventure-engine/tests/adventure_engine.test.mjs
+      - name: Adventure Engine test suite
+        run: node --test cyberpunk-red/adventure-engine/tests/*.test.mjs
 
       - name: Syntax and JSON validation
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/adventure_engine.js
-          node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/cyberpunk_adventure_controller.js
-          node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/cyberpunk_host_adapters.js
+          for f in cyberpunk-red/adventure-engine/runtime/*.js; do node --input-type=module --check < "$f"; done
           python3 -m py_compile cyberpunk-red/patches/r572_adventure_engine_core.py
+          python3 -m py_compile cyberpunk-red/patches/r572_adventure_engine_hardening.py
           python3 - <<'PY'
           import json, pathlib
           for p in pathlib.Path('cyberpunk-red/adventure-engine').rglob('*.json'):
@@ -58,12 +57,9 @@ jobs:
           }
           EOF
           python3 cyberpunk-red/patches/r572_adventure_engine_core.py "$ROOT"
+          python3 cyberpunk-red/patches/r572_adventure_engine_hardening.py "$ROOT"
           grep -F "versionCode = 4172" "$ROOT/app/build.gradle.kts"
           grep -F 'versionName = "4.1.72"' "$ROOT/app/build.gradle.kts"
-          grep -F "CyberpunkAdventureController" "$APP/sheets.js"
-          grep -F "ADVENTURE_ENGINE_CONTEXT" "$APP/adventure_engine.js"
-          grep -F "cyberpunk_sandbox" "$APP/data/adventures/index.json"
-          node --input-type=module --check < "$APP/adventure_engine.js"
-          node --input-type=module --check < "$APP/cyberpunk_adventure_controller.js"
-          node --input-type=module --check < "$APP/cyberpunk_host_adapters.js"
-          node --input-type=module --check < "$APP/sheets.js"
+          grep -F "cyberpunk_adventure_controller_v2.js" "$APP/sheets.js"
+          grep -F "red_chrome_cargo" "$APP/data/adventures/index.json"
+          for f in "$APP"/adventure_engine.js "$APP"/adventure_engine_v2.js "$APP"/cyberpunk_adventure_controller.js "$APP"/cyberpunk_adventure_controller_v2.js "$APP"/cyberpunk_host_adapters.js "$APP"/sheets.js; do node --input-type=module --check < "$f"; done
