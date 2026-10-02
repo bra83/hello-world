@@ -28,6 +28,7 @@ modules_src = bundle / "modules"
 for p in (
     runtime_src / "adventure_engine.js",
     runtime_src / "cyberpunk_adventure_controller.js",
+    runtime_src / "cyberpunk_host_adapters.js",
     schema_src,
     modules_src / "index.json",
 ):
@@ -39,6 +40,7 @@ data_dest.mkdir(parents=True, exist_ok=True)
 
 shutil.copy2(runtime_src / "adventure_engine.js", app / "adventure_engine.js")
 shutil.copy2(runtime_src / "cyberpunk_adventure_controller.js", app / "cyberpunk_adventure_controller.js")
+shutil.copy2(runtime_src / "cyberpunk_host_adapters.js", app / "cyberpunk_host_adapters.js")
 shutil.copy2(schema_src, data_dest / "adventure-module.schema.json")
 for src in modules_src.glob("*.json"):
     shutil.copy2(src, data_dest / src.name)
