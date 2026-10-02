@@ -208,3 +208,46 @@ test('resolved ruleAction allows event consequences and persists mechanical resu
   assert.equal(rt.state.ruleResults.length,1);
   assert.equal(rt.state.ruleResults[0].success,true);
 });
+
+
+test('save close reload preserves exact AdventureState instead of AI reconstruction',async()=>{
+  let stored=null;
+  const persistence=new AdventurePersistence({readState:()=>stored,writeState:s=>{stored=structuredClone(s)}});
+  const first=new AdventureRuntime(fixture(),{persistence,rng:{random:()=>0,int:()=>0}});
+  await first.start({campaignId:'reload-case'});
+  await first.discoverClue('clue.a',{method:'SEARCH'});
+  first.advanceClock('clock.threat',2);
+  first.recordHistory({playerAction:'I search the room',summary:'Search resolved'});
+  const before=first.snapshot();
+
+  const second=new AdventureRuntime(fixture(),{persistence,rng:{random:()=>0,int:()=>0}});
+  second.load();
+  const after=second.snapshot();
+  assert.equal(after.campaignId,'reload-case');
+  assert.deepEqual(after.discoveredClueIds,before.discoveredClueIds);
+  assert.equal(after.activeClockStates['clock.threat'].current,2);
+  assert.equal(after.history.at(-1).summary,'Search resolved');
+  assert.equal(after.currentSceneId,before.currentSceneId);
+  assert.equal(after.currentLocationId,before.currentLocationId);
+});
+
+test('runtime progresses without RAG PDF or network services',async()=>{
+  const rt=new AdventureRuntime(fixture(),{rng:{random:()=>0,int:()=>0}});
+  await rt.start();
+  await rt.discoverClue('clue.a',{method:'SEARCH'});
+  rt.state.flags.objective_ok=true;
+  await rt.completeObjective('obj.main');
+  assert.equal(rt.evaluateCompletion(),AdventureStatus.COMPLETED);
+  assert.ok(rt.state.discoveredClueIds.includes('clue.a'));
+});
+
+test('operation sequence survives persistence and prevents clock key collisions after reload',async()=>{
+  let stored=null;
+  const persistence=new AdventurePersistence({readState:()=>stored,writeState:s=>{stored=structuredClone(s)}});
+  const first=new AdventureRuntime(fixture(),{persistence,rng:{random:()=>0,int:()=>0}});
+  await first.start();first.advanceClock('clock.threat',1);const seq=first.state.operationSequence;
+  const second=new AdventureRuntime(fixture(),{persistence,rng:{random:()=>0,int:()=>0}});second.load();
+  second.advanceClock('clock.threat',1);
+  assert.equal(second.state.activeClockStates['clock.threat'].current,2);
+  assert.ok(second.state.operationSequence>seq);
+});
