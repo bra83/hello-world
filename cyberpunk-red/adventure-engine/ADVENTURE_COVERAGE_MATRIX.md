@@ -13,7 +13,15 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 | Hope Reborn — The Devil's Cut | Player-owned Case/Heist/Escape; social/stealth/cunning/NET; Mira intel sealed; dual resolution and dynamic bottle bonus | Validation + agency + sealed intel + resolution/handoff tests | **IMPLEMENTED** |
 | Hope Reborn — Hope's Calling!!! | Open preparation Task Hub; supply recovery; Random/The Gentleman social-or-combat branch; electrical/NET sabotage investigation; Vox/Populi identities sealed; opening-night RCL assault with opposed Bar Brawl and timed chaos; unfinished tasks remain consequential | Validation + open-order + secret gating + Rules authority + opening-resolution tests | **IMPLEMENTED** |
 | Hope Reborn — Ripping the Ripper | Evidence hook; Busan Back Door con; Redline/setup/flip; direct Bullets are Simpler assault; walkway/east wing/bridge/maze/man cave; path switching; early-death A Different Ending; Hope and Home; final campaign flag | Validation + branch ownership + sealed Rocklin target + Rules authority + early-death diversion + campaign completion tests | **IMPLEMENTED** |
-| Tales of the RED / Street Stories | Legacy/source content exists; universal module conversion pending per mission | Not yet universal-engine tested | **PARTIAL** |
+| Tales of the RED — A Night at the Opera | University District investigation; Vampyres event; optional Empty Office Hours branch; Noodles and Info; sealed Master/Ruthven truth; abandoned-church Monster Hunt; split contract payment | Validation + deterministic start + sealed-secret + optional-branch + DV9 Rules authority + payment/completion tests | **IMPLEMENTED** |
+| Tales of the RED — Agents of Desire | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — A Bucket Full of Popcorn-Flavored Kibble | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Drummer and the Whale | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Haven't Got a Stitch to Wear | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Reaping the Reaper | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Staying Vigilant | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Bathed in Red | Source indexed; first half of closing two-parter | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — One Red Night | Source indexed; second half of closing two-parter | No universal-module test yet | **PARTIAL** |
 | Elflines Online | Source present; extraction pending | No universal-module test | **PARTIAL** |
 | Elflines Online EP1 | Source present; extraction pending | No universal-module test | **PARTIAL** |
 | Single Shot Pack | Source present; adventure enumeration/conversion pending | No universal-module test | **PARTIAL** |
@@ -22,6 +30,14 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 ## Runtime hardening coverage
 
 R5.72 verifies event location restrictions, repeatable-event operation keys, UNTIL_SUCCESS retries after blocked Rules Engine resolution, engine-gated objective success/failure, idempotent consequences, immediate completion re-evaluation, GM-only unrevealed secrets, save/load separation, deterministic host RNG and AI intent authority boundaries.
+
+## Tales of the RED invariants
+
+Street Stories contains nine missions and explicitly uses the Beat Chart structure: Background, Rest of the Story, Setting, Opposition and Hook followed by Developments, Cliffhangers, optional Beats, Climaxes and Resolutions. The source explicitly warns that Beat flow is not always linear and can contain branches, multiple Climaxes and multiple endings. The Adventure Engine therefore treats printed Beat order as authored structure, not permission to railroad the Crew.
+
+### A Night at the Opera
+
+The first mission is now a persistent state graph. Seven disappearances and Lucy Rhinemeyer's contract are public facts; Lord Ruthven's guilt and the Master's covert role are sealed GM truth until evidence supports revelation. Getting Tickets and the Vampyres gathering establish investigation opportunities, Noodles and Info supplies a normal route forward, and Empty Office Hours remains an optional branch rather than a progression gate. The DV9 Campus Security observation is delegated to Rules Engine. Philharmonic Vampyres are not automatically hostile. The mission resolves only after Lucy's recovery state is persisted, with the 2,000eb contract represented as 500eb on signing plus 1,500eb balance.
 
 ## Hope Reborn invariants
 
