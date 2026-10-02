@@ -2,22 +2,28 @@ import {
   AdventureEngine,AdventureRegistry,AdventureValidator,AdventurePersistence,
   AdventureRuntime,StartMode,migrateAdventureState
 } from './adventure_engine.js';
+import {
+  CyberpunkRulesAdapter,CyberpunkLocationResolver,AdventureHostEventBridge,CYBERPUNK_RULE_ACTIONS
+} from './cyberpunk_host_adapters.js';
 
 const clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
 
 export class CyberpunkAdventureController{
   constructor({getCharacter,saveCharacter,atlas=null,bridge=null,toast=()=>{}}={}){
     this.getCharacter=getCharacter;this.saveCharacter=saveCharacter;this.atlas=atlas;this.bridge=bridge;this.toast=toast;
-    this.registry=new AdventureRegistry({validator:new AdventureValidator()});
-    this.ready=false;this.lastError=null;this.lastValidation=[];
+    this.rulesAdapter=new CyberpunkRulesAdapter({bridge,getCharacter:()=>this.character()});
+    this.locationResolver=new CyberpunkLocationResolver({atlas,bridge,getCharacter:()=>this.character()});
+    this.registry=new AdventureRegistry({validator:new AdventureValidator({knownRuleActions:CYBERPUNK_RULE_ACTIONS})});
+    this.hostEvents=new AdventureHostEventBridge({controller:this,getCharacter:()=>this.character()});
+    this.ready=false;this.lastError=null;this.lastValidation=[];this.lastLocationResolution=null;
   }
 
   async init(){
     try{
       const rows=await this.registry.loadIndex('./data/adventures/index.json');
-      this.ready=true;this.lastValidation=rows;return rows;
+      this.ready=true;this.lastValidation=rows;this.hostEvents.bind();return rows;
     }catch(error){
-      this.lastError=error;console.error('[ADVENTURE_ENGINE_INIT]',error);this.ready=false;return[];
+      this.lastError=error;console.error('[ADVENTURE_ENGINE_INIT]',error);this.ready=false;this.hostEvents.bind();return[];
     }
   }
 
@@ -35,20 +41,23 @@ export class CyberpunkAdventureController{
   runtime(c=this.character()){
     const raw=this.persistedState(c);if(!raw?.adventureId||!this.registry.has(raw.adventureId))return null;
     const module=this.registry.get(raw.adventureId),state=migrateAdventureState(raw,module);
-    return new AdventureRuntime(module,{state,persistence:this.persistence(c),mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c)});
+    return new AdventureRuntime(module,{
+      state,persistence:this.persistence(c),mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c),rulesAdapter:this.rulesAdapter
+    });
   }
 
   mapAdapter(c=this.character()){
     return {
       choosePlayerStart:async()=>c?.worldPosition?.poiCode||c?.worldPosition?.locationId||c?.worldPosition?.district||null,
       randomValidStart:async({type}={})=>{
-        const pois=Array.isArray(this.atlas?.pois)?this.atlas.pois:Array.isArray(this.atlas?.pointsOfInterest)?this.atlas.pointsOfInterest:[];
+        const pois=Array.isArray(this.atlas?.poiCatalog)?this.atlas.poiCatalog:[];
         const eligible=pois.filter(p=>type!=='tavern'||/bar|club|hotel|restaurant|cafe|tavern/i.test([p.type,p.category,p.name].filter(Boolean).join(' ')));
         const pool=eligible.length?eligible:pois;
         if(!pool.length)return c?.worldPosition?.poiCode||c?.worldPosition?.district||null;
         const word=new Uint32Array(1);crypto.getRandomValues(word);const p=pool[word[0]%pool.length];
         return p.code||p.id||p.locationId||p.name||null;
-      }
+      },
+      resolveLocation:async(ref,moduleLocation=null)=>this.locationResolver.resolve(ref,moduleLocation)
     };
   }
 
@@ -70,14 +79,30 @@ export class CyberpunkAdventureController{
     };
   }
 
+  async positionAtModuleLocation(adventureId,locationId){
+    const c=this.character(),module=this.registry.get(adventureId);if(!c||!module||!locationId)return null;
+    const def=(module.locations||[]).find(x=>x.id===locationId)||null;
+    const out=await this.locationResolver.position(locationId,def);
+    this.lastLocationResolution={at:new Date().toISOString(),adventureId,locationId,result:clone(out)};
+    return out;
+  }
+
   async start(adventureId,{mode=null,locationId=null,sceneId=null,flags={}}={}){
     const c=this.character();if(!c)throw new Error('Personagem/campanha não carregado');
     if(!this.registry.has(adventureId))throw new Error('AdventureModule não registrado: '+adventureId);
-    const engine=new AdventureEngine({registry:this.registry,mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c),persistenceFactory:()=>this.persistence(c)});
+    const engine=new AdventureEngine({
+      registry:this.registry,mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c),rulesAdapter:this.rulesAdapter,
+      persistenceFactory:()=>this.persistence(c)
+    });
     const campaignId=c.campaignState?.session?.campaignId||c.campaignState?.campaignId||null;
     const state=await engine.start(adventureId,{mode,campaignId,locationId,sceneId,flags,worldSnapshot:this.worldSnapshot(c)});
     c.campaignState.adventureState=state;
+    const resolvedMode=state.startMode;
+    if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(resolvedMode)&&state.currentLocationId){
+      await this.positionAtModuleLocation(adventureId,state.currentLocationId);
+    }
     await this.saveCharacter?.(c);
+    this.hostEvents.seedClock();
     return state;
   }
 
@@ -93,11 +118,15 @@ export class CyberpunkAdventureController{
     await this.saveCharacter?.(c);
   }
 
-  async syncLocation(){
+  async syncLocation(locationId=null,sceneId=null,reason='world-sync'){
     const c=this.character(),rt=this.runtime(c);if(!rt)return null;
-    const locationId=c?.worldPosition?.poiCode||c?.worldPosition?.locationId||c?.worldPosition?.district||null;
-    if(locationId&&locationId!==rt.state.currentLocationId)await rt.enterLocation(locationId,{reason:'world-sync'});
-    c.campaignState.adventureState=rt.snapshot();return rt.snapshot();
+    const resolved=locationId||c?.worldPosition?.poiCode||c?.worldPosition?.locationId||c?.worldPosition?.district||null;
+    if(resolved&&resolved!==rt.state.currentLocationId){
+      await rt.enterLocation(resolved,{sceneId,reason});
+    }else if(sceneId&&sceneId!==rt.state.currentSceneId){
+      rt.state.currentSceneId=sceneId;rt.state.updatedAt=new Date().toISOString();rt.persist();
+    }
+    c.campaignState.adventureState=rt.snapshot();await this.saveCharacter?.(c);return rt.snapshot();
   }
 
   buildContextObject(c=this.character(),{mechanicalResults=null,narrativeProfile=null}={}){
@@ -114,7 +143,7 @@ export class CyberpunkAdventureController{
 
   async processHostResult({result={},playerAction='',ruleResult=null,mode='PLAYER_ACTION'}={}){
     const c=this.character(),rt=this.runtime(c);if(!rt)return {accepted:[],rejected:[]};
-    let intent=result?.adventureIntent||result?.adventure_intent||result?.presentation?.adventureIntent||null;
+    const intent=result?.adventureIntent||result?.adventure_intent||result?.presentation?.adventureIntent||null;
     const review=intent?rt.acceptAiIntent(intent,{sourceId:'ai:'+Date.now(),context:{mode}}):{accepted:[],rejected:[],applied:[],events:[]};
     for(const event of review.events||[])await rt.processEvent(event,{mode,source:'ai-intent'});
     rt.recordHistory({
@@ -131,8 +160,25 @@ export class CyberpunkAdventureController{
 
   async notify(type,payload={}){
     const c=this.character(),rt=this.runtime(c);if(!rt)return[];
-    const rows=await rt.processEvent({type,...payload},{source:'host'});
+    let rows=[];
+    if(type==='ON_NPC_MET'&&payload.npcId){
+      rows=await rt.meetNpc(payload.npcId,{source:'host',...payload});
+    }else if(type==='ON_NPC_DEATH'&&payload.npcId){
+      const applied=rt.applyConsequences([{type:'KILL_NPC',target:payload.npcId,reason:payload.reason||'Rules Engine reported death'}],{
+        sourceId:'host:npc-death:'+payload.npcId,idempotencyPrefix:'host:npc-death:'+payload.npcId,context:{source:'host',...payload}
+      });
+      rows=[{hostConsequence:applied}];
+      for(const event of applied.events||[])rows.push(...await rt.processEvent(event,{source:'host',...payload}));
+    }else{
+      rows=await rt.processEvent({type,...payload},{source:'host'});
+    }
     c.campaignState.adventureState=rt.snapshot();await this.saveCharacter?.(c);return rows;
+  }
+
+  async resolveRuleAction(action,context={}){
+    const c=this.character(),rt=this.runtime(c);if(!rt)return{ok:false,resolved:false,blocked:true,reason:'NO_ACTIVE_ADVENTURE'};
+    const rows=await rt.resolveRuleActions([action],{context:{source:'manual-host',...context}});
+    c.campaignState.adventureState=rt.snapshot();await this.saveCharacter?.(c);return rows[0]||null;
   }
 
   debugState(c=this.character()){
@@ -145,6 +191,9 @@ export class CyberpunkAdventureController{
       sceneId:state?.currentSceneId||null,
       locationId:state?.currentLocationId||null,
       status:state?.status||'NONE',
+      pendingRuleActions:state?.pendingRuleActions?.length||0,
+      ruleResults:state?.ruleResults?.length||0,
+      lastLocationResolution:clone(this.lastLocationResolution),
       lastError:this.lastError?String(this.lastError.message||this.lastError):null
     };
   }
