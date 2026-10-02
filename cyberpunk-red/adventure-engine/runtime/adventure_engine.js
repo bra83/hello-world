@@ -247,6 +247,7 @@ export class AdventureConditionEngine {
       case 'CLOCK_GTE': return Number(state.activeClockStates?.[c.clockId||c.target]?.current||0)>=Number(c.value||0);
       case 'CLOCK_LTE': return Number(state.activeClockStates?.[c.clockId||c.target]?.current||0)<=Number(c.value||0);
       case 'CONTEXT_EQUALS': return ctx?.[c.key]===c.value;
+      case 'RULE_RESULT': {const rows=list(ctx?.ruleResults),match=rows.find(r=>(c.actionId&&r.action?.id===c.actionId)||(c.actionType&&norm(r.type).toUpperCase()===norm(c.actionType).toUpperCase()));if(!match)return false;if(c.field)return match?.[c.field]===c.value;return match.ok===true&&match.resolved!==false;}
       default:
         if(this.externalEvaluator)return !!this.externalEvaluator(c,state,ctx);
         return false;
@@ -404,6 +405,7 @@ export function createAdventureState(module,{campaignId=null,startMode=null,loca
     activeClockStates:{}, flags:{...obj(start.initialFlags),...obj(flags)},
     relationshipStates:{}, inventoryChanges:{}, worldChanges:{}, factionStates:{}, npcLocations:{},
     campaignConsequences:[], history:[], appliedConsequenceKeys:[], operationSequence:0,
+    pendingRuleActions:[], ruleResults:[],
     createdAt:nowIso(), updatedAt:nowIso(), lastEventAt:null,
     startSnapshot:{world:worldSnapshot?deepClone(worldSnapshot):null}
   };
@@ -517,6 +519,17 @@ export class AdventureRuntime {
     return {applied,events};
   }
 
+  async resolveRuleActions(actions,{event=null,context={}}={}){
+    this.requireState();const results=[];
+    for(const action of list(actions)){
+      const actionId=norm(action?.id)||this.nextOperationKey('rule');
+      if(!this.rulesAdapter?.resolve){const row={ok:false,resolved:false,blocked:true,reason:'RULES_ADAPTER_UNAVAILABLE',type:norm(action?.type).toUpperCase(),action:{...deepClone(action),id:actionId}};results.push(row);this.state.pendingRuleActions.push(row);continue}
+      const row=await this.rulesAdapter.resolve({...deepClone(action),id:actionId},{adventureState:this.state,module:this.module,event,context});results.push(row);
+      if(row?.ok===true&&row?.resolved!==false)this.state.ruleResults.push({...deepClone(row),resolvedAt:nowIso()});else this.state.pendingRuleActions.push({...deepClone(row),queuedAt:nowIso()});
+    }
+    this.state.ruleResults=this.state.ruleResults.slice(-100);this.state.pendingRuleActions=this.state.pendingRuleActions.slice(-100);this.persist();return results;
+  }
+
   async processEvent(event,context={}){
     this.requireState();this.state.lastEventAt=nowIso();
     const matched=this.triggerEngine.matching(this.module,event,this.state,context);
@@ -525,8 +538,11 @@ export class AdventureRuntime {
       const once=ev.repeatPolicy!=='REPEATABLE';
       if(once&&this.state.triggeredEventIds.includes(ev.id))continue;
       if(once)this.state.triggeredEventIds.push(ev.id);
-      const out=this.applyConsequences(ev.consequences,{sourceId:'event:'+ev.id,idempotencyPrefix:'event:'+ev.id,context:{...context,event}});
-      results.push({eventId:ev.id,ruleActions:deepClone(ev.ruleActions||[]),...out});
+      const ruleResults=await this.resolveRuleActions(ev.ruleActions,{event:ev,context:{...context,event}});
+      const requiredBlocked=ruleResults.some((r,index)=>list(ev.ruleActions)[index]?.required!==false&&(r?.ok!==true||r?.resolved===false||r?.blocked));
+      if(requiredBlocked){results.push({eventId:ev.id,ruleActions:deepClone(ev.ruleActions||[]),ruleResults,blockedByRules:true,applied:[],events:[]});this.persist();continue}
+      const out=this.applyConsequences(ev.consequences,{sourceId:'event:'+ev.id,idempotencyPrefix:'event:'+ev.id,context:{...context,event,ruleResults}});
+      results.push({eventId:ev.id,ruleActions:deepClone(ev.ruleActions||[]),ruleResults,blockedByRules:false,...out});
       for(const chained of out.events)await this.processEvent(chained,{...context,parentEventId:ev.id});
     }
     this.persist();return results;
@@ -655,7 +671,7 @@ export function migrateAdventureState(raw,module){
   state.stateVersion=Number(state.stateVersion||1);
   state.schemaVersion=Number(state.schemaVersion||module?.schemaVersion||1);
   state.contentVersion=Number(state.contentVersion||module?.contentVersion||module?.version||1);
-  for(const key of ['visitedLocations','encounteredNpcIds','deadNpcIds','missingNpcIds','removedNpcIds','discoveredClueIds','revealedSecretIds','knownRumorIds','completedObjectiveIds','failedObjectiveIds','triggeredEventIds','resolvedEncounterIds','campaignConsequences','history','appliedConsequenceKeys'])state[key]=list(state[key]);
+  for(const key of ['visitedLocations','encounteredNpcIds','deadNpcIds','missingNpcIds','removedNpcIds','discoveredClueIds','revealedSecretIds','knownRumorIds','completedObjectiveIds','failedObjectiveIds','triggeredEventIds','resolvedEncounterIds','campaignConsequences','history','appliedConsequenceKeys','pendingRuleActions','ruleResults'])state[key]=list(state[key]);
   for(const key of ['activeClockStates','flags','relationshipStates','inventoryChanges','worldChanges','factionStates','npcLocations'])state[key]=obj(state[key]);
   state.operationSequence=Number(state.operationSequence||0);
   state.updatedAt=nowIso();
