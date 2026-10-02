@@ -14,7 +14,7 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 | Hope Reborn — Hope's Calling!!! | Open preparation Task Hub; supply recovery; Random/The Gentleman social-or-combat branch; electrical/NET sabotage investigation; Vox/Populi identities sealed; opening-night RCL assault with opposed Bar Brawl and timed chaos; unfinished tasks remain consequential | Validation + open-order + secret gating + Rules authority + opening-resolution tests | **IMPLEMENTED** |
 | Hope Reborn — Ripping the Ripper | Evidence hook; Busan Back Door con; Redline/setup/flip; direct Bullets are Simpler assault; walkway/east wing/bridge/maze/man cave; path switching; early-death A Different Ending; Hope and Home; final campaign flag | Validation + branch ownership + sealed Rocklin target + Rules authority + early-death diversion + campaign completion tests | **IMPLEMENTED** |
 | Tales of the RED — A Night at the Opera | University District investigation; Vampyres event; optional Empty Office Hours branch; Noodles and Info; sealed Master/Ruthven truth; abandoned-church Monster Hunt; split contract payment | Validation + deterministic start + sealed-secret + optional-branch + DV9 Rules authority + payment/completion tests | **IMPLEMENTED** |
-| Tales of the RED — Agents of Desire | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Agents of Desire | Rogue/Kodai hook; La Lune Bleue social infiltration; optional Jane/Lotus/Buttkicker investigation routes; Ai/Soulkiller truth sealed; Together Forever server-farm climax; three player-owned resolutions | Validation + deterministic start + GM-secret isolation + multi-route investigation + DV24/DV17 Rules authority + resolution/completion tests | **IMPLEMENTED** |
 | Tales of the RED — A Bucket Full of Popcorn-Flavored Kibble | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
 | Tales of the RED — Drummer and the Whale | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
 | Tales of the RED — Haven't Got a Stitch to Wear | Source indexed; module conversion pending | No universal-module test yet | **PARTIAL** |
@@ -38,6 +38,10 @@ Street Stories contains nine missions and explicitly uses the Beat Chart structu
 ### A Night at the Opera
 
 The first mission is now a persistent state graph. Seven disappearances and Lucy Rhinemeyer's contract are public facts; Lord Ruthven's guilt and the Master's covert role are sealed GM truth until evidence supports revelation. Getting Tickets and the Vampyres gathering establish investigation opportunities, Noodles and Info supplies a normal route forward, and Empty Office Hours remains an optional branch rather than a progression gate. The DV9 Campus Security observation is delegated to Rules Engine. Philharmonic Vampyres are not automatically hostile. The mission resolves only after Lucy's recovery state is persisted, with the 2,000eb contract represented as 500eb on signing plus 1,500eb balance.
+
+### Agents of Desire
+
+The second mission is now a persistent investigation graph. Kodai's claim that Ai was kidnapped is public framing; human Ai's death, Soulkiller history and the Agent/persona truth remain sealed until evidence supports revelation. La Lune Bleue is modeled as social/infiltration space rather than mandatory combat. Jane Gatsby, Lotus LaMarch, the Saturday Night Buttkickers and authored evidence can converge on the University District server farm without a single forced route. The DV24 historical Library Search and DV17 Maurice Conversation/Persuasion checks remain Rules Engine authority. Together Forever persists recovery of the Agent/persona, after which Till Death Do Us Part, The Charade Continues and The Broken Masquerade are explicit player-owned resolutions; narration cannot choose the moral disposition.
 
 ## Hope Reborn invariants
 
