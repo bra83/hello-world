@@ -1,0 +1,74 @@
+{
+  "id": "cyberpunk_sandbox",
+  "schemaVersion": 1,
+  "contentVersion": 1,
+  "version": 1,
+  "systemId": "cyberpunk-red",
+  "title": "Night City Sandbox",
+  "sourceBook": "Braseiro runtime",
+  "sourcePages": null,
+  "description": "Module-neutral sandbox used when no official adventure is selected. It provides persistent AdventureState without inventing canon.",
+  "campaignType": "SANDBOX",
+  "premise": "Open-world play in Night City. The World Engine determines local reality; the Adventure Engine persists facts, history, objectives and consequences created during play.",
+  "publicBackground": "Night City is open for player-directed play.",
+  "gmBackground": "Do not invent official-adventure canon. Treat this module as a state container for emergent play.",
+  "startDefinition": {
+    "startingLocation": null,
+    "startingMap": null,
+    "startingHex": null,
+    "startingSceneId": null,
+    "openingSituation": "Begin at the player-selected or current world location.",
+    "initialNpcIds": [],
+    "initialEvents": [],
+    "initialFlags": {
+      "sandbox": true
+    },
+    "initialObjectives": [],
+    "initialClocks": [],
+    "initialConsequences": [],
+    "openingConstraints": [
+      "PLAYER_AGENCY",
+      "NO_RAILROADING"
+    ]
+  },
+  "locations": [],
+  "npcs": [],
+  "factions": [],
+  "creatures": [],
+  "items": [],
+  "clues": [],
+  "secrets": [],
+  "rumors": [],
+  "objectives": [],
+  "quests": [],
+  "scenes": [],
+  "encounters": [],
+  "events": [],
+  "triggers": [],
+  "conditions": [],
+  "consequences": [],
+  "clocks": [],
+  "timers": [],
+  "stateFlags": [],
+  "relationships": [],
+  "transitions": [],
+  "completionConditions": [],
+  "failureConditions": [],
+  "rewards": [],
+  "randomTables": [],
+  "gmGuidance": [
+    "Use World Engine facts as reality.",
+    "Do not force a mission path.",
+    "Persist meaningful consequences through AdventureState.",
+    "Rules are resolved by the Rules Engine, not this module."
+  ],
+  "sourceReferences": [
+    {
+      "sourceBook": "Braseiro runtime",
+      "chapter": "Adventure Engine",
+      "section": "Sandbox compatibility",
+      "pdfPage": null,
+      "printedPage": null
+    }
+  ]
+}
