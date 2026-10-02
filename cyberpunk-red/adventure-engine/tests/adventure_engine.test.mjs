@@ -174,3 +174,37 @@ test('registry supports reusable modules and start mode remains explicit',async(
   const state=await rt.start({mode:StartMode.OFFICIAL_ADVENTURE});
   assert.equal(state.startMode,StartMode.OFFICIAL_ADVENTURE);
 });
+
+
+test('required ruleAction blocks consequences when Rules Engine cannot resolve it',async()=>{
+  const m=fixture();
+  m.events.push({
+    id:'event.rule.blocked',trigger:{type:'ON_DIALOGUE'},prerequisites:[],locationRestrictions:[],repeatPolicy:'ONCE',
+    content:'Needs a check',ruleActions:[{id:'check.1',type:'SKILL_CHECK',skill:'perception',difficulty:14,required:true}],
+    consequences:[{type:'SET_FLAG',target:'passed_rule_event',value:true}],sourceReference:{sourceBook:'Fixture'}
+  });
+  const rulesAdapter={resolve:async action=>({ok:false,resolved:false,blocked:true,reason:'NO_RULES',type:action.type,action})};
+  const rt=new AdventureRuntime(m,{rulesAdapter,rng:{random:()=>0,int:()=>0}});
+  await rt.start();
+  const rows=await rt.processEvent({type:'ON_DIALOGUE'});
+  assert.equal(rows[0].blockedByRules,true);
+  assert.equal(rt.state.flags.passed_rule_event,undefined);
+  assert.equal(rt.state.pendingRuleActions.length,1);
+});
+
+test('resolved ruleAction allows event consequences and persists mechanical result',async()=>{
+  const m=fixture();
+  m.events.push({
+    id:'event.rule.ok',trigger:{type:'ON_DIALOGUE'},prerequisites:[],locationRestrictions:[],repeatPolicy:'ONCE',
+    content:'Check resolves',ruleActions:[{id:'check.2',type:'SKILL_CHECK',skill:'perception',difficulty:14,required:true}],
+    consequences:[{type:'SET_FLAG',target:'rule_event_resolved',value:true}],sourceReference:{sourceBook:'Fixture'}
+  });
+  const rulesAdapter={resolve:async action=>({ok:true,resolved:true,total:18,success:true,type:action.type,action})};
+  const rt=new AdventureRuntime(m,{rulesAdapter,rng:{random:()=>0,int:()=>0}});
+  await rt.start();
+  const rows=await rt.processEvent({type:'ON_DIALOGUE'});
+  assert.equal(rows[0].blockedByRules,false);
+  assert.equal(rt.state.flags.rule_event_resolved,true);
+  assert.equal(rt.state.ruleResults.length,1);
+  assert.equal(rt.state.ruleResults[0].success,true);
+});
