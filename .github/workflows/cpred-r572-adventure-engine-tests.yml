@@ -1,0 +1,67 @@
+name: Cyberpunk RED R5.72 Adventure Engine tests
+
+on:
+  push:
+    branches:
+      - cyberpunk-red-adventure-engine-r572
+    paths:
+      - "cyberpunk-red/adventure-engine/**"
+      - "cyberpunk-red/patches/r572_adventure_engine_core.py"
+      - ".github/workflows/cpred-r572-adventure-engine-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  adventure-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Pure Adventure Engine tests
+        run: node --test cyberpunk-red/adventure-engine/tests/adventure_engine.test.mjs
+
+      - name: Syntax and JSON validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/adventure_engine.js
+          node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/cyberpunk_adventure_controller.js
+          python3 -m py_compile cyberpunk-red/patches/r572_adventure_engine_core.py
+          python3 - <<'PY'
+          import json, pathlib
+          for p in pathlib.Path('cyberpunk-red/adventure-engine').rglob('*.json'):
+              json.loads(p.read_text(encoding='utf-8'))
+              print('JSON_OK', p)
+          PY
+
+      - name: R5.72 patch integration dry-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/tmp-r572/android"
+          APP="$ROOT/app/src/main/assets/web/app"
+          mkdir -p "$APP" "$ROOT/app/src/main/java/com/braseiro/cyberpunkred"
+          cp cyberpunk-red/r5.63-source-snapshot/sheets.js "$APP/sheets.js"
+          cp cyberpunk-red/r5.63-source-snapshot/index.html "$APP/index.html"
+          cp cyberpunk-red/r5.63-source-snapshot/MainActivity.kt "$ROOT/app/src/main/java/com/braseiro/cyberpunkred/MainActivity.kt"
+          cat > "$ROOT/app/build.gradle.kts" <<'EOF'
+          android {
+            defaultConfig {
+              versionCode = 4171
+              versionName = "4.1.71"
+            }
+          }
+          EOF
+          python3 cyberpunk-red/patches/r572_adventure_engine_core.py "$ROOT"
+          grep -F "versionCode = 4172" "$ROOT/app/build.gradle.kts"
+          grep -F 'versionName = "4.1.72"' "$ROOT/app/build.gradle.kts"
+          grep -F "CyberpunkAdventureController" "$APP/sheets.js"
+          grep -F "ADVENTURE_ENGINE_CONTEXT" "$APP/adventure_engine.js"
+          grep -F "cyberpunk_sandbox" "$APP/data/adventures/index.json"
+          node --input-type=module --check < "$APP/adventure_engine.js"
+          node --input-type=module --check < "$APP/cyberpunk_adventure_controller.js"
+          node --input-type=module --check < "$APP/sheets.js"
