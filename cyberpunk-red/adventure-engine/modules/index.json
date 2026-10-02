@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "cyberpunk_sandbox",
+      "path": "./cyberpunk_sandbox.json"
+    }
+  ]
+}
