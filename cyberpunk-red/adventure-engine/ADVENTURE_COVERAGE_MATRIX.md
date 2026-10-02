@@ -1,46 +1,49 @@
 # ADVENTURE_COVERAGE_MATRIX — Cyberpunk RED
 
-Status meanings:
-- **IMPLEMENTED** — structured AdventureModule + runtime path + tests.
-- **PARTIAL** — source or legacy runtime content exists, but conversion to the universal AdventureModule is incomplete.
-- **BLOCKED** — source/dependency not yet parsed or a required Rules/World mechanic is not yet wired.
+Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + tests; **PARTIAL** = conversion incomplete; **BLOCKED** = missing required dependency.
 
-| Adventure / source | Source | Start | Locations | NPCs | Clues | Secrets | Events | Encounters | Objectives | Rules dependencies | Completion | Runtime tested | Status |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Night City Sandbox | Braseiro runtime | Dynamic current/player location | World Engine | World Engine | Dynamic | Dynamic | Dynamic | Rules Engine | Emergent | Existing RED rules | Open-ended | Engine unit tests | **IMPLEMENTED** |
-| Red Chrome Cargo | `RTG-CPR-RedChromeCargo-RED.pdf` pp. 3–4 | Hornet train → parallel Hammerhead approach | Hornet train, roof, rear/middle/front/driver cars | Hornet + rear/front Legion groups + officer | Cargo manifest | Cargo contents sealed by reveal condition | Boarding, hatch, NET, front defense, stop train, extraction | Rear guards + front defense | Recover and return four crates | Athletics DV13/DV15, Basic Tech DV13, Drive Land Vehicle DV9, combat, NET Architecture | Objective success → reward/world consequence | V2 module validation, deterministic start, sealed-secret, event semantics | **IMPLEMENTED** |
-| Hope Reborn — campaign spine | `Cyberpunk RED - Hope Reborn [v1.1] CR3091.pdf` Playing the Campaign | Forlorn Hope home base | Campaign hub encoded | Mission modules provide detail | Mission rumor framework encoded | Mission modules provide detail | Six-mission continuity transitions encoded | Mission modules provide detail | Campaign objective encoded | Core RED + mission dependencies | Final mission flag → campaign completion | V2 validation, deterministic start/order/completion | **PARTIAL** |
-| Hope Reborn — The Angel's Share | same source pp.19–38 | Forlorn Hope Hook | Hope, Chrome Cross, Blank HQ, disaster site, From the Ashes | Marianne, Blank, Phoenix + encounter opposition | Blank HQ lead + mission rumors | Later Hope disaster sealed until crisis | Hook, Marianne, Blankety Blank, Chrome Cross/Blank HQ branches, Boom, rescue branches, Recombobulating, Pickup Game, A New Hope | Chrome Cross, Blank HQ, Red Chrome climax | Initial favor + survive/save who you can | Core RED combat/investigation; Rules Engine owns outcomes | Resolution emits `hr_mission_angels_share_complete` | V2 validation, sealed knowledge, branch preservation, crisis clock, optional rescue, fight/leave choice, campaign handoff | **IMPLEMENTED** |
-| Hope Reborn — Real Estate Rumble | same source pp.41–61 | Forlorn Hope Hook → Talent Scout → Haunted House | Hope, Haunted House, garage/investigation trail, Woodland Park, chase route, resolution | Marianne, Jack, Tyme, Sp00ph, Backhand + Bozo opposition | My First GRAF3 clue + Bozo investigation trail | Sp00ph/Cirqu3 plot sealed until discovered | Hook, Talent Scout, Haunted House, Death Maze, Ghosts Busted, Downtime, Garage, Interrogation, Investigation, Kasim's, Woodland Park, Bomb-Bastic Bouquet, Chasing Clowns, Happy/Sad Jack | Death Maze NET/traps, Garage, bouquet, chase/combat climax | Resolve property job + stop Sp00ph escalation | NET Architecture, combat, chase; Rules Engine owns outcomes | Happy/Sad resolutions converge; 500eb each; emits `hr_mission_real_estate_rumble_complete` | V2 validation, sealed antagonist, GRAF3 guard agency branch, 0d6 bouquet invariant, chase/combat climax, objective/payment/handoff | **IMPLEMENTED** |
-| Hope Reborn — Welcome to the Neighborhood | same source, mission begins p.63 | Campaign transition encoded | Pending | Pending | Pending | Pending | Detailed Beat conversion pending | Pending | Pending | Core RED + mission-specific | Pending | Campaign transition tested | **PARTIAL** |
-| Hope Reborn — The Devil's Cut | same source, mission begins p.93 | Campaign transition encoded | Pending | Pending | Pending | Pending | Detailed Beat conversion pending | Pending | Pending | Social/stealth/cunning emphasis + Core RED | Pending | Campaign transition tested | **PARTIAL** |
-| Hope Reborn — Hope's Calling!!! | same source, mission begins p.113 | Campaign transition encoded | Pending | Pending | Pending | Pending | Detailed Beat conversion pending | Pending | Pending | Core RED + mission-specific | Pending | Campaign transition tested | **PARTIAL** |
-| Hope Reborn — Ripping the Ripper | same source, mission begins p.145 | Campaign transition encoded | Pending | Pending | Pending | Pending | Detailed Beat conversion pending | Pending | Campaign finale flag encoded | Core RED + branching finale | Campaign completion encoded | Campaign completion tested | **PARTIAL** |
-| Tales of the RED / Street Stories collection | `RTG-CPR-TalesoftheRED-Digitalv1.2.pdf` / Street Stories sources | Pending per-adventure extraction | Legacy content exists; module conversion pending | Legacy content exists; conversion pending | Pending structured extraction | Pending | Legacy beats/events need mapping | Existing combat/Netrunning | Pending | Core RED + adventure-specific dependencies | Pending | Not yet under universal engine | **PARTIAL** |
-| Elflines Online | `RTG-CPR-ElflinesOnline.pdf` | Pending extraction | Pending | Pending | Pending | Pending | Pending | Existing RED rules | Pending | Core RED + Elflines-specific mechanics | Pending | Not yet under universal engine | **PARTIAL** |
-| Elflines Online EP1 | `RTG-CPR-ElflinesOnlineEP1.pdf` | Pending extraction | Pending | Pending | Pending | Pending | Pending | Existing RED rules | Pending | Core RED + Elflines-specific mechanics | Pending | No | **PARTIAL** |
-| Single Shot Pack | `RTG-CPRed-SingleShotPackv1.1.pdf` | Pending adventure enumeration | Pending | Pending | Pending | Pending | Pending | Existing RED rules | Pending | Core RED | Pending | No | **PARTIAL** |
-| CEMK — The Jacket | Edgerunners Mission Kit / `CEMK The Jacket.pdf` | Pending extraction | Maps/source present | Pending | Pending | Pending | Pending | RED/CEMK mechanics | Pending | CEMK rule dependencies already partly present in VTT | Pending | No universal-module test yet | **PARTIAL** |
+| Adventure / source | State graph / mechanics | Runtime evidence | Status |
+|---|---|---|---|
+| Night City Sandbox | Dynamic World Engine start; persistent emergent state | Engine unit tests | **IMPLEMENTED** |
+| Red Chrome Cargo | Hornet/Hammerhead locations, cargo clue/secret, boarding/NET/combat/extraction, Rules Engine DVs | Validation + deterministic start + sealed secret + event tests | **IMPLEMENTED** |
+| Hope Reborn — campaign spine | Six-mission ordered continuity with persistent handoff flags; mission internals remain separate modules | Campaign start/order/completion tests | **PARTIAL** |
+| Hope Reborn — The Angel's Share | Branching Blank investigation, disaster/rescue branches, Pickup Game choice, A New Hope handoff | Validation + sealed knowledge + optional rescue + agency tests | **IMPLEMENTED** |
+| Hope Reborn — Real Estate Rumble | Haunted House/Death Maze, GRAF3 guard branch, Bozo escalation, bouquet invariant, chase/combat, Happy/Sad Jack | Validation + agency + 0d6 bouquet + resolution/handoff tests | **IMPLEMENTED** |
+| Hope Reborn — Welcome to the Neighborhood | Open five-job hub across one month; The Shark multi-route hostage rescue; Boys' Night Out timed rescue; Wheels on Fire roller derby; Turf War defense/betrayal; Love Lies Dying timed investigation/rescue; The Report gated by all five jobs | Validation + open-order + Rules authority + hidden timer + betrayal failure + report/payment/handoff tests | **IMPLEMENTED** |
+| Hope Reborn — The Devil's Cut | Campaign transition exists; detailed heist/social/stealth Beat conversion pending | Campaign transition only | **PARTIAL** |
+| Hope Reborn — Hope's Calling!!! | Campaign transition exists; detailed Beat conversion pending | Campaign transition only | **PARTIAL** |
+| Hope Reborn — Ripping the Ripper | Campaign finale flag exists; detailed branching finale conversion pending | Campaign completion only | **PARTIAL** |
+| Tales of the RED / Street Stories | Legacy/source content exists; universal module conversion pending per mission | Not yet universal-engine tested | **PARTIAL** |
+| Elflines Online | Source present; extraction pending | No universal-module test | **PARTIAL** |
+| Elflines Online EP1 | Source present; extraction pending | No universal-module test | **PARTIAL** |
+| Single Shot Pack | Source present; adventure enumeration/conversion pending | No universal-module test | **PARTIAL** |
+| CEMK — The Jacket | Source/maps present; CEMK mechanics partly exist in VTT; adventure conversion pending | No universal-module test | **PARTIAL** |
 
 ## Runtime hardening coverage
 
-The hardened R5.72 runtime verifies top-level event location restrictions, repeatable-event operation keys, UNTIL_SUCCESS retries after blocked Rules Engine resolution, engine-gated objective success/failure, idempotent objective consequences, immediate completion re-evaluation, and GM-only handling of unrevealed secrets.
+R5.72 verifies event location restrictions, repeatable-event operation keys, UNTIL_SUCCESS retries after blocked Rules Engine resolution, engine-gated objective success/failure, idempotent consequences, immediate completion re-evaluation, GM-only unrevealed secrets, save/load separation, deterministic host RNG and AI intent authority boundaries.
 
-## Hope Reborn campaign invariants now encoded
+## Hope Reborn invariants
 
-The source explicitly defines Hope Reborn as six interconnected missions designed to occur one after another, with later missions building on earlier events. The Adventure Engine persists that campaign sequence independently from AI narration. Mission Beat flow is not assumed linear: branch-specific and optional Beats remain explicit choices rather than automatic transitions. Rumor tables and Infobox knowledge remain information-gating mechanisms rather than free AI knowledge. The fourth mission, The Devil's Cut, must retain its emphasis on cunning, social skills and stealth rather than being normalized into combat.
+Hope Reborn is six interconnected missions intended to build on one another. The Adventure Engine persists sequence independently of narration, but does not assume each mission is linear: optional Beats and player-selected branches remain explicit. Rumors/Infobox knowledge are gated information, not free narrator knowledge. The Devil's Cut must preserve its social/stealth/cunning emphasis rather than being normalized into combat.
 
-### The Angel's Share conversion
+### The Angel's Share
 
-The mission's source Beat chart is represented as an executable state graph: Hook → Marianne → Blankety Blank, with Chrome Cross and direct/other investigation routes converging on Blank's HQ; Boom pivots to Search & Rescue; bar area, electrified stage, locked freezer, storage room and spreading fire remain optional rescue hazards; Recombobulating converges on Pickup Game; A New Hope resolves at From the Ashes. The engine does not reveal the later disaster during the opening job, does not force Chrome Cross, does not auto-run every rescue hazard, and does not decide whether the Crew stays to fight the Red Chrome Legion or leaves. Resolution emits the campaign handoff flag for Real Estate Rumble.
+Hook → Marianne → Blankety Blank branches through Chrome Cross/direct investigation to Blank's HQ; Boom pivots to optional Search & Rescue hazards; Recombobulating converges on Pickup Game; A New Hope emits the Real Estate Rumble handoff. The engine does not reveal the disaster early, force Chrome Cross, auto-run every rescue hazard, or decide fight/leave for the Crew.
 
-### Real Estate Rumble conversion
+### Real Estate Rumble
 
-The mission's Beat graph now covers Hook → Talent Scout → Haunted House → Death Maze → Ghosts Busted → Downtime → Garage → Interrogation/Investigation/Kasim's → Woodland Park → Bomb-Bastic Bouquet → Chasing Clowns → Happy/Sad Jack. The My First GRAF3 clue explicitly opens the source-supported agency branch where a wary Crew can guard the construction-yard GRAF3 instead of blindly following the expected path. Sp00ph remains GM-only knowledge until the investigation reveals him. The Haunted House NET Architecture stays a Rules Engine dependency. The bouquet countdown preserves the source invariant that reaching zero produces confetti/glitter for 0d6 damage, not an invented explosive attack. The climax supports either chase mechanics or traditional combat, and both resolution branches converge on Marianne's promised 500eb-per-Edgerunner payment plus the campaign handoff flag for Welcome to the Neighborhood.
+Hook → Talent Scout → Haunted House/Death Maze → Ghosts Busted → Garage/investigation → Woodland Park → Bomb-Bastic Bouquet → Chasing Clowns → Happy/Sad Jack. The GRAF3 clue preserves the source-supported guard branch. Sp00ph remains sealed until discovered. Bouquet expiry is 0d6 confetti/glitter, and climax supports chase or combat. Resolution pays the promised 500eb per Edgerunner and emits the Welcome handoff.
+
+### Welcome to the Neighborhood
+
+The source explicitly makes this mission different: it is five small jobs playable **in any order** over the following month. The module therefore starts at an open Job Hub rather than a linear scene chain. The Shark preserves stairs/elevator/window/light-well/NET and player-invented approaches; Wheels on Fire delegates roller derby to Rules Engine with the source's opposed-Athletics simplification as fallback; Love Lies Dying keeps its deadline hidden from players; Turf War preserves the catastrophic choice to join Tarquin, which ends Hope Reborn instead of being silently repaired. Only completion of all five jobs unlocks The Report. The Report pays 2,000eb per Edgerunner and emits `hr_mission_welcome_neighborhood_complete`, handing continuity to The Devil's Cut.
 
 ## Source inventory verified in Drive
-The canonical Cyberpunk RED Drive contains Hope Reborn v1.1 plus Hope Reborn+ DLC, Tales of the RED / Street Stories, Red Chrome Cargo, Elflines Online, Elflines Online EP1, Single Shot Pack, Edgerunners Mission Kit including The Jacket, Core v1.25, Interface RED volumes, Black Chrome, Danger Gal Dossier and other support sources.
 
-## Conversion rule
-A row cannot become IMPLEMENTED merely because the PDF is indexed or legacy JSON exists. Required evidence remains:
-`AdventureModule → validated references → AdventureState → playable triggers/conditions/consequences → save/load → AI context → mechanical dependency resolution → runtime test`.
+Canonical Drive sources include Hope Reborn v1.1 + Hope Reborn+ DLC, Tales of the RED / Street Stories, Red Chrome Cargo, Elflines Online + EP1, Single Shot Pack, Edgerunners Mission Kit/The Jacket, Core v1.25, Interface RED, Black Chrome, Danger Gal Dossier and support material.
+
+## Conversion gate
+
+A row cannot become IMPLEMENTED merely because a PDF is indexed or legacy JSON exists. Required evidence remains:
+`AdventureModule → validated references → AdventureState → playable triggers/conditions/consequences → save/load → AI context → mechanical dependency resolution → runtime tests`.
