@@ -10,7 +10,7 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 | Hope Reborn — The Angel's Share | Branching Blank investigation, disaster/rescue branches, Pickup Game choice, A New Hope handoff | Validation + sealed knowledge + optional rescue + agency tests | **IMPLEMENTED** |
 | Hope Reborn — Real Estate Rumble | Haunted House/Death Maze, GRAF3 guard branch, Bozo escalation, bouquet invariant, chase/combat, Happy/Sad Jack | Validation + agency + 0d6 bouquet + resolution/handoff tests | **IMPLEMENTED** |
 | Hope Reborn — Welcome to the Neighborhood | Open five-job hub across one month; The Shark multi-route hostage rescue; Boys' Night Out timed rescue; Wheels on Fire roller derby; Turf War defense/betrayal; Love Lies Dying timed investigation/rescue; The Report gated by all five jobs | Validation + open-order + Rules authority + hidden timer + betrayal failure + report/payment/handoff tests | **IMPLEMENTED** |
-| Hope Reborn — The Devil's Cut | Campaign transition exists; detailed heist/social/stealth Beat conversion pending | Campaign transition only | **PARTIAL** |
+| Hope Reborn — The Devil's Cut | Hook/Snakebite/Doing a Heist → player-owned Case/Heist/Escape; social/stealth/cunning/NET/player-devised approaches; Mira intel sealed; Empty Bottle/Full Bar both valid; canonical base/bonus reward model | Validation + agency + sealed intel + location-gated dual-resolution + reward/handoff tests | **IMPLEMENTED** |
 | Hope Reborn — Hope's Calling!!! | Campaign transition exists; detailed Beat conversion pending | Campaign transition only | **PARTIAL** |
 | Hope Reborn — Ripping the Ripper | Campaign finale flag exists; detailed branching finale conversion pending | Campaign completion only | **PARTIAL** |
 | Tales of the RED / Street Stories | Legacy/source content exists; universal module conversion pending per mission | Not yet universal-engine tested | **PARTIAL** |
@@ -25,7 +25,7 @@ R5.72 verifies event location restrictions, repeatable-event operation keys, UNT
 
 ## Hope Reborn invariants
 
-Hope Reborn is six interconnected missions intended to build on one another. The Adventure Engine persists sequence independently of narration, but does not assume each mission is linear: optional Beats and player-selected branches remain explicit. Rumors/Infobox knowledge are gated information, not free narrator knowledge. The Devil's Cut must preserve its social/stealth/cunning emphasis rather than being normalized into combat.
+Hope Reborn is six interconnected missions intended to build on one another. The Adventure Engine persists sequence independently of narration, but does not assume each mission is linear: optional Beats and player-selected branches remain explicit. Rumors/Infobox knowledge are gated information, not free narrator knowledge. The Devil's Cut preserves its social/stealth/cunning emphasis rather than being normalized into combat.
 
 ### The Angel's Share
 
@@ -38,6 +38,10 @@ Hook → Talent Scout → Haunted House/Death Maze → Ghosts Busted → Garage/
 ### Welcome to the Neighborhood
 
 The source explicitly makes this mission different: it is five small jobs playable **in any order** over the following month. The module therefore starts at an open Job Hub rather than a linear scene chain. The Shark preserves stairs/elevator/window/light-well/NET and player-invented approaches; Wheels on Fire delegates roller derby to Rules Engine with the source's opposed-Athletics simplification as fallback; Love Lies Dying keeps its deadline hidden from players; Turf War preserves the catastrophic choice to join Tarquin, which ends Hope Reborn instead of being silently repaired. Only completion of all five jobs unlocks The Report. The Report pays 2,000eb per Edgerunner and emits `hr_mission_welcome_neighborhood_complete`, handing continuity to The Devil's Cut.
+
+### The Devil's Cut
+
+The heist is modeled as Hook → Snakebite → Doing a Heist → Case the Joint → Heist Night → Fleeing the Scene → Empty Bottle/Full Bar. The Adventure Engine owns facts and persistence but never selects the heist plan. Casing can expose optional intelligence such as the noon delivery, Mira's blueprints/gala logistics/NET passwords, and player-devised routes. Skill/NET/escape/cargo protection resolution stays with Rules Engine. Combat is not an assumed beat. Both failure and success are valid campaign continuations: failure has no job payout, while success records Harry's 1,000eb-per-Edgerunner base fee and leaves Marianne's 100eb-per-recovered-bottle bonus dynamic so the actual recovered bottle count remains authoritative.
 
 ## Source inventory verified in Drive
 
