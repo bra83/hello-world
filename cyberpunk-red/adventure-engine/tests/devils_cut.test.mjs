@@ -1,0 +1,19 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {AdventureValidator,AdventureRuntime,AdventureStatus} from '../runtime/adventure_engine_v2.js';
+const module=JSON.parse(fs.readFileSync(new URL('../modules/hope_reborn_devils_cut.json',import.meta.url),'utf8'));
+
+test("Devil's Cut validates and starts at the Hope",async()=>{const v=new AdventureValidator().validateModule(module);assert.equal(v.ok,true,JSON.stringify(v.errors));const rt=new AdventureRuntime(module,{rng:{random:()=>0,int:()=>0}});await rt.start();assert.equal(rt.state.currentLocationId,'tdc_forlorn_hope');assert.equal(rt.state.currentSceneId,'tdc_scene_hook');});
+
+test('heist plan remains player-owned and combat is not forced',()=>{assert.ok(module.startDefinition.openingConstraints.includes('PLAYER_OWNS_HEIST_PLAN'));assert.ok(module.startDefinition.openingConstraints.includes('COMBAT_NOT_FORCED'));const h=module.encounters.find(e=>e.id==='tdc_enc_heist').ruleActions[0];assert.equal(h.authority,'RULES_ENGINE');assert.equal(h.combatPolicy,'NOT_FORCED');assert.ok(h.preferredModes.includes('STEALTH'));assert.ok(h.preferredModes.includes('SOCIAL'));assert.ok(h.preferredModes.includes('PLAYER_DEVISED'));});
+
+test('canonical heist phases are explicit state-graph scenes',()=>{const ids=module.scenes.map(s=>s.id);for(const id of ['tdc_scene_case','tdc_scene_heist','tdc_scene_escape','tdc_scene_empty','tdc_scene_full'])assert.ok(ids.includes(id));assert.match(module.scenes.find(s=>s.id==='tdc_scene_planning').knownFacts.join(' '),/Case the Joint.*Perform the Heist.*Escape the Scene/i);});
+
+test('Mira security knowledge is sealed until discovered',async()=>{const rt=new AdventureRuntime(module,{rng:{random:()=>0,int:()=>0}});await rt.start();assert.equal(rt.revealSecret('tdc_secret_mira_agent').blocked,true);await rt.discoverClue('tdc_clue_mira',{method:'SOCIAL'});assert.equal(rt.revealSecret('tdc_secret_mira_agent').revealed,true);});
+
+test('failed heist is a valid Empty Bottle campaign continuation with no payout',async()=>{const rt=new AdventureRuntime(module,{rng:{random:()=>0,int:()=>0}});await rt.start();rt.state.flags.tdc_heist_failed=true;rt.state.currentLocationId='tdc_forlorn_hope';const rows=await rt.processEvent({type:'ON_FLAG',target:'tdc_resolve_empty'});assert.equal(rows.length,1);assert.equal(rt.state.flags.tdc_empty_bottle,true);assert.equal(rt.state.flags.hr_mission_devils_cut_complete,true);assert.equal(rt.state.inventoryChanges.eb_per_edgerunner,undefined);assert.equal(rt.evaluateCompletion(),AdventureStatus.COMPLETED);});
+
+test('successful heist pays canonical base fee and preserves per-bottle bonus as dynamic state',async()=>{const rt=new AdventureRuntime(module,{rng:{random:()=>0,int:()=>0}});await rt.start();rt.state.flags.tdc_heist_succeeded=true;rt.state.currentLocationId='tdc_forlorn_hope';const rows=await rt.processEvent({type:'ON_FLAG',target:'tdc_resolve_full'});assert.equal(rows.length,1);assert.equal(rt.state.inventoryChanges.eb_per_edgerunner,1000);assert.equal(rt.state.flags.tdc_bonus_100eb_per_recovered_bottle,true);assert.equal(rt.state.flags.hr_mission_devils_cut_complete,true);assert.equal(rt.evaluateCompletion(),AdventureStatus.COMPLETED);});
+
+test('resolution cannot fire at target before returning to the Hope',async()=>{const rt=new AdventureRuntime(module,{rng:{random:()=>0,int:()=>0}});await rt.start();rt.state.flags.tdc_heist_succeeded=true;rt.state.currentLocationId='tdc_target';const rows=await rt.processEvent({type:'ON_FLAG',target:'tdc_resolve_full'});assert.equal(rows.length,0);assert.equal(rt.state.flags.hr_mission_devils_cut_complete,undefined);});
