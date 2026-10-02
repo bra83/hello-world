@@ -189,7 +189,7 @@ if "async legacyNewAdventure()" not in s:
     old = "  async newAdventure(){"
     if old not in s:
         raise SystemExit("R572_NEW_ADVENTURE_WRAPPER_ANCHOR_NOT_FOUND")
-    s = s.replace(old, "  async newAdventure(){return this.newAdventureUniversal()}\\n  async legacyNewAdventure(){", 1)
+    s = s.replace(old, "  async newAdventure(){return this.newAdventureUniversal()}\n  async legacyNewAdventure(){", 1)
 
 # Make the standard render path keep selectors synchronized with active/saved state.
 s = s.replace(
