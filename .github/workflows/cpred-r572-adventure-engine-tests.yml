@@ -30,6 +30,7 @@ jobs:
           set -euo pipefail
           node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/adventure_engine.js
           node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/cyberpunk_adventure_controller.js
+          node --input-type=module --check < cyberpunk-red/adventure-engine/runtime/cyberpunk_host_adapters.js
           python3 -m py_compile cyberpunk-red/patches/r572_adventure_engine_core.py
           python3 - <<'PY'
           import json, pathlib
@@ -64,4 +65,5 @@ jobs:
           grep -F "cyberpunk_sandbox" "$APP/data/adventures/index.json"
           node --input-type=module --check < "$APP/adventure_engine.js"
           node --input-type=module --check < "$APP/cyberpunk_adventure_controller.js"
+          node --input-type=module --check < "$APP/cyberpunk_host_adapters.js"
           node --input-type=module --check < "$APP/sheets.js"
