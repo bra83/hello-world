@@ -8,13 +8,24 @@ Status meanings:
 | Adventure / source | Source | Start | Locations | NPCs | Clues | Secrets | Events | Encounters | Objectives | Rules dependencies | Completion | Runtime tested | Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Night City Sandbox | Braseiro runtime | Dynamic current/player location | World Engine | World Engine | Dynamic | Dynamic | Dynamic | Rules Engine | Emergent | Existing RED rules | Open-ended | Engine unit tests | **IMPLEMENTED** |
+| Red Chrome Cargo | `RTG-CPR-RedChromeCargo-RED.pdf` pp. 3–4 | Hornet train → parallel Hammerhead approach | Hornet train, roof, rear/middle/front/driver cars | Hornet + rear/front Legion groups + officer | Cargo manifest | Cargo contents sealed by reveal condition | Boarding, hatch, NET, front defense, stop train, extraction | Rear guards + front defense | Recover and return four crates | Athletics DV13/DV15, Basic Tech DV13, Drive Land Vehicle DV9, combat, NET Architecture | Objective success → reward/world consequence | V2 module validation, deterministic start, sealed-secret, event semantics | **IMPLEMENTED** |
 | Tales of the RED collection | RTG-CPR-TalesoftheRED-Digitalv1.2.pdf / Street Stories sources | Pending per-adventure extraction | Legacy content exists; module conversion pending | Legacy content exists; conversion pending | Pending structured extraction | Pending | Legacy beats/events need mapping | Existing combat/Netrunning | Pending | Core RED + adventure-specific dependencies | Pending | Not yet under universal engine | **PARTIAL** |
 | Tales of the RED — Hope Reborn | Hope Reborn v1.1 + DLC | Pending extraction | Legacy runtime content/equipment exists | Pending module conversion | Pending | Pending | Pending | Existing RED rules | Pending | Core RED + Hope Reborn content | Pending | Not yet under universal engine | **PARTIAL** |
-| Red Chrome Cargo | RTG-CPR-RedChromeCargo-RED.pdf | Pending canonical start extraction | Legacy functional phases exist | Pending module conversion | Pending | Pending | Legacy phases need state-graph mapping | Core combat/vehicle as required | Pending | Core RED | Pending | Not yet under universal engine | **PARTIAL** |
 | Elflines Online | RTG-CPR-ElflinesOnline.pdf | Pending extraction | Pending | Pending | Pending | Pending | Pending | Existing RED rules | Pending | Core RED + Elflines-specific mechanics | Pending | Not yet under universal engine | **PARTIAL** |
 | Elflines Online EP1 | RTG-CPR-ElflinesOnlineEP1.pdf | Pending extraction | Pending | Pending | Pending | Pending | Pending | Existing RED rules | Pending | Core RED + Elflines-specific mechanics | Pending | No | **PARTIAL** |
 | Single Shot Pack | RTG-CPRed-SingleShotPackv1.1.pdf | Pending adventure enumeration | Pending | Pending | Pending | Pending | Pending | Existing RED rules | Pending | Core RED | Pending | No | **PARTIAL** |
 | CEMK — The Jacket | Edgerunners Mission Kit / CEMK The Jacket.pdf | Pending extraction | Maps/source present | Pending | Pending | Pending | Pending | RED/CEMK mechanics | Pending | CEMK rule dependencies already partly present in VTT | Pending | No universal-module test yet | **PARTIAL** |
+
+## Runtime hardening coverage
+
+The hardened R5.72 runtime now additionally verifies:
+- top-level `locationRestrictions` on events;
+- `REPEATABLE` events use unique operation keys and can apply consequences more than once;
+- `UNTIL_SUCCESS` events remain retryable after a blocked/failed required Rules Engine resolution and close only after a resolved attempt;
+- objective success/failure conditions are checked by the engine before state mutation;
+- `consequencesSuccess` / `consequencesFailure` are applied idempotently by the engine;
+- objective completion immediately re-evaluates adventure completion;
+- official module secrets remain in GM-only context until their reveal conditions are true.
 
 ## Source inventory verified in Drive
 The canonical Cyberpunk RED Drive currently contains, among other material:
