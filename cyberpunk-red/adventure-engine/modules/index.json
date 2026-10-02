@@ -4,6 +4,7 @@
     {"id":"cyberpunk_sandbox","path":"./cyberpunk_sandbox.json"},
     {"id":"red_chrome_cargo","path":"./red_chrome_cargo.json"},
     {"id":"hope_reborn_campaign","path":"./hope_reborn_campaign.json"},
-    {"id":"hope_reborn_angels_share","path":"./hope_reborn_angels_share.json"}
+    {"id":"hope_reborn_angels_share","path":"./hope_reborn_angels_share.json"},
+    {"id":"hope_reborn_real_estate_rumble","path":"./hope_reborn_real_estate_rumble.json"}
   ]
 }
