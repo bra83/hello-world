@@ -403,7 +403,7 @@ export function createAdventureState(module,{campaignId=null,startMode=null,loca
     triggeredEventIds:[], resolvedEncounterIds:[],
     activeClockStates:{}, flags:{...obj(start.initialFlags),...obj(flags)},
     relationshipStates:{}, inventoryChanges:{}, worldChanges:{}, factionStates:{}, npcLocations:{},
-    campaignConsequences:[], history:[], appliedConsequenceKeys:[],
+    campaignConsequences:[], history:[], appliedConsequenceKeys:[], operationSequence:0,
     createdAt:nowIso(), updatedAt:nowIso(), lastEventAt:null,
     startSnapshot:{world:worldSnapshot?deepClone(worldSnapshot):null}
   };
@@ -504,6 +504,7 @@ export class AdventureRuntime {
   pause(){this.requireState();this.state.status=AdventureStatus.PAUSED;this.state.updatedAt=nowIso();return this.persist()}
   resume(){this.requireState();this.state.status=AdventureStatus.ACTIVE;this.state.updatedAt=nowIso();return this.persist()}
   requireState(){if(!this.state)throw new AdventureError('NO_STATE','Adventure has not been started or loaded');return this.state}
+  nextOperationKey(prefix='op'){this.requireState();this.state.operationSequence=Number(this.state.operationSequence||0)+1;return prefix+':'+this.state.operationSequence}
 
   applyConsequences(consequences,{sourceId=null,idempotencyPrefix=null,context={}}={}){
     this.requireState();const applied=[],events=[];
@@ -568,7 +569,7 @@ export class AdventureRuntime {
 
   async completeObjective(id,context={}){const out=this.applyConsequences([{type:'COMPLETE_OBJECTIVE',target:id}],{sourceId:'objective:'+id,idempotencyPrefix:'objective-complete:'+id,context});for(const e of out.events)await this.processEvent(e,context);return out}
   async failObjective(id,context={}){const out=this.applyConsequences([{type:'FAIL_OBJECTIVE',target:id}],{sourceId:'objective:'+id,idempotencyPrefix:'objective-fail:'+id,context});for(const e of out.events)await this.processEvent(e,context);return out}
-  advanceClock(id,amount=1,context={}){const out=this.applyConsequences([{type:'ADVANCE_CLOCK',target:id,value:amount}],{sourceId:'clock:'+id,idempotencyPrefix:'clock:'+id+':'+nowIso(),context});return out}
+  advanceClock(id,amount=1,context={}){const op=this.nextOperationKey('clock:'+id);const out=this.applyConsequences([{type:'ADVANCE_CLOCK',target:id,value:amount}],{sourceId:'clock:'+id,idempotencyPrefix:op,context});return out}
 
   rollTable(tableId,{context={}}={}){
     this.requireState();const table=idMap(this.module.randomTables).get(tableId);
@@ -656,6 +657,7 @@ export function migrateAdventureState(raw,module){
   state.contentVersion=Number(state.contentVersion||module?.contentVersion||module?.version||1);
   for(const key of ['visitedLocations','encounteredNpcIds','deadNpcIds','missingNpcIds','removedNpcIds','discoveredClueIds','revealedSecretIds','knownRumorIds','completedObjectiveIds','failedObjectiveIds','triggeredEventIds','resolvedEncounterIds','campaignConsequences','history','appliedConsequenceKeys'])state[key]=list(state[key]);
   for(const key of ['activeClockStates','flags','relationshipStates','inventoryChanges','worldChanges','factionStates','npcLocations'])state[key]=obj(state[key]);
+  state.operationSequence=Number(state.operationSequence||0);
   state.updatedAt=nowIso();
   return state;
 }
