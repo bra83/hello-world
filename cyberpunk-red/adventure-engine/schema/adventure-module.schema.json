@@ -1,0 +1,900 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://braseiro.local/schemas/adventure-module.schema.json",
+  "title": "Braseiro AdventureModule",
+  "type": "object",
+  "required": [
+    "id",
+    "schemaVersion",
+    "contentVersion",
+    "systemId",
+    "title",
+    "startDefinition"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "contentVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "version": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "systemId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceBook": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourcePages": {
+      "type": [
+        "array",
+        "string",
+        "null"
+      ]
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "campaignType": {
+      "enum": [
+        "OFFICIAL_ADVENTURE",
+        "GUIDED_CAMPAIGN",
+        "SOLO",
+        "SANDBOX",
+        "TAVERN_START"
+      ]
+    },
+    "recommendedCharacters": {},
+    "recommendedLevelOrTier": {},
+    "startingLocation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startingRegion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startingMapId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startingHexId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startingDate": {},
+    "startingTime": {},
+    "startingWeatherPolicy": {},
+    "premise": {},
+    "publicBackground": {},
+    "gmBackground": {},
+    "openingSituation": {},
+    "startDefinition": {
+      "type": "object",
+      "required": [
+        "startingLocation"
+      ],
+      "properties": {
+        "startingLocation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startingMap": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startingHex": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startingSceneId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "openingSituation": {},
+        "initialNpcIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "initialEvents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "initialFlags": {
+          "type": "object"
+        },
+        "initialObjectives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "initialClocks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "initialConsequences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/consequence"
+          }
+        },
+        "openingConstraints": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "locations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/location"
+      }
+    },
+    "npcs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/npc"
+      }
+    },
+    "factions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "creatures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "clues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/clue"
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/secret"
+      }
+    },
+    "rumors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rumor"
+      }
+    },
+    "objectives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/objective"
+      }
+    },
+    "quests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/objective"
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scene"
+      }
+    },
+    "encounters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/encounter"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/condition"
+      }
+    },
+    "consequences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/consequence"
+      }
+    },
+    "clocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/clock"
+      }
+    },
+    "timers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "stateFlags": {
+      "type": "array"
+    },
+    "relationships": {
+      "type": "array"
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "completionConditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/condition"
+      }
+    },
+    "failureConditions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/condition"
+      }
+    },
+    "rewards": {
+      "type": "array"
+    },
+    "randomTables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/randomTable"
+      }
+    },
+    "gmGuidance": {
+      "type": "array"
+    },
+    "sourceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceReference"
+      }
+    }
+  },
+  "$defs": {
+    "sourceReference": {
+      "type": "object",
+      "properties": {
+        "sourceBook": {
+          "type": "string"
+        },
+        "chapter": {},
+        "section": {},
+        "pdfPage": {},
+        "printedPage": {}
+      },
+      "additionalProperties": true
+    },
+    "entity": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sourceReference": {
+          "$ref": "#/$defs/sourceReference"
+        }
+      },
+      "additionalProperties": true
+    },
+    "condition": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "target": {},
+        "value": {},
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        }
+      },
+      "additionalProperties": true
+    },
+    "consequence": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "target": {},
+        "value": {},
+        "reason": {},
+        "sourceId": {},
+        "idempotencyKey": {},
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "location": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {},
+            "regionId": {},
+            "mapId": {},
+            "hexId": {},
+            "type": {},
+            "descriptionPublic": {},
+            "descriptionGM": {},
+            "arrivalDescription": {},
+            "exits": {
+              "type": "array"
+            },
+            "npcIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "encounterIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "clueIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "secretIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "events": {
+              "type": "array"
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "npc": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {},
+            "role": {},
+            "factionId": {},
+            "locationPolicy": {},
+            "personality": {},
+            "motivation": {},
+            "goals": {
+              "type": "array"
+            },
+            "fears": {
+              "type": "array"
+            },
+            "publicKnowledge": {},
+            "secretKnowledge": {},
+            "relationships": {
+              "type": "array"
+            },
+            "dialogueGuidance": {},
+            "availableClues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "behaviorTriggers": {
+              "type": "array"
+            },
+            "combatProfileId": {},
+            "persistencePolicy": {}
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "clue": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "title": {},
+            "locationIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "npcIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "discoveryMethods": {
+              "type": "array"
+            },
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "information": {},
+            "unlocks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "repeatable": {
+              "type": "boolean"
+            },
+            "required": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "secret": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "information": {},
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "revealConditions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "relatedNpcIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "relatedLocationIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "rumor": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "content": {},
+            "truth": {
+              "enum": [
+                "TRUE",
+                "PARTIAL",
+                "FALSE",
+                "UNKNOWN"
+              ]
+            },
+            "sources": {
+              "type": "array"
+            },
+            "locations": {
+              "type": "array"
+            },
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "reveals": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "objective": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "title": {},
+            "description": {},
+            "type": {
+              "enum": [
+                "PRIMARY",
+                "SECONDARY",
+                "OPTIONAL",
+                "HIDDEN"
+              ]
+            },
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "successConditions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "failureConditions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "consequencesSuccess": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/consequence"
+              }
+            },
+            "consequencesFailure": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/consequence"
+              }
+            },
+            "unlocks": {
+              "type": "array"
+            },
+            "rewards": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "scene": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "locationId": {},
+            "purpose": {},
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "participants": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "knownFacts": {
+              "type": "array"
+            },
+            "hiddenFacts": {
+              "type": "array"
+            },
+            "availableClues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "availableEvents": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "availableEncounters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "possibleTriggers": {
+              "type": "array"
+            },
+            "exits": {
+              "type": "array"
+            },
+            "completionConditions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "encounter": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "participants": {
+              "type": "array"
+            },
+            "locationId": {},
+            "trigger": {},
+            "victoryConditions": {
+              "type": "array"
+            },
+            "retreatConditions": {
+              "type": "array"
+            },
+            "consequencesVictory": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/consequence"
+              }
+            },
+            "consequencesDefeat": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/consequence"
+              }
+            },
+            "ruleActions": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "event": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "trigger": {},
+            "prerequisites": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "locationRestrictions": {
+              "type": "array"
+            },
+            "timeRestrictions": {
+              "type": "array"
+            },
+            "probability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "repeatPolicy": {},
+            "content": {},
+            "ruleActions": {
+              "type": "array"
+            },
+            "consequences": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/consequence"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "clock": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "name",
+            "max"
+          ],
+          "properties": {
+            "name": {},
+            "current": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "advanceTriggers": {
+              "type": "array"
+            },
+            "regressTriggers": {
+              "type": "array"
+            },
+            "thresholds": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "thresholdEvents": {
+              "type": "array"
+            },
+            "visibleToPlayer": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "randomTable": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/entity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {},
+                  "weight": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/condition"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}
