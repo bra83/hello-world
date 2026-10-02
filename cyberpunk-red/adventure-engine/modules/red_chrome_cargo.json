@@ -1,0 +1,107 @@
+{
+  "id": "red_chrome_cargo",
+  "schemaVersion": 1,
+  "contentVersion": 1,
+  "version": 1,
+  "systemId": "cyberpunk-red",
+  "title": "Red Chrome Cargo",
+  "sourceBook": "RTG-CPR-RedChromeCargo-RED.pdf",
+  "sourcePages": [3, 4],
+  "description": "Structured state graph for the Red Chrome Cargo screamsheet. Narrative text is paraphrased; mechanical facts and branching state are explicit.",
+  "campaignType": "OFFICIAL_ADVENTURE",
+  "recommendedCharacters": "Crew able to handle infiltration, combat, technical checks and optional Netrunning.",
+  "startingRegion": "Night City / northern outskirts",
+  "premise": "Hornet hires the crew to recover four stolen locked crates from the Red Chrome Legion aboard the Hammerhead cargo train.",
+  "publicBackground": "A gang war is escalating in northern Night City and a valuable shipment has been stolen.",
+  "gmBackground": "The cargo contains military hardware and cyberware plus a dangerous neurotoxin. Returning it changes the balance of the gang conflict.",
+  "openingSituation": "The crew receives Hornet's offer and, if they accept, is placed aboard his train as it draws alongside the Hammerhead.",
+  "startDefinition": {
+    "startingLocation": "rcc_hornet_train",
+    "startingMap": null,
+    "startingHex": null,
+    "startingSceneId": "rcc_scene_briefing",
+    "openingSituation": "Hornet briefs the crew on the recovery job before the parallel-train approach.",
+    "initialNpcIds": ["rcc_hornet"],
+    "initialEvents": [],
+    "initialFlags": {"rcc_job_offered": true, "rcc_guards_alerted": false, "rcc_turret_controlled": false, "rcc_train_stopped": false, "rcc_cargo_secured": false},
+    "initialObjectives": ["rcc_obj_recover_cargo"],
+    "initialClocks": ["rcc_clock_alert"],
+    "initialConsequences": [],
+    "openingConstraints": ["PLAYER_AGENCY", "NO_FORCED_APPROACH", "RULES_ENGINE_OWNS_CHECKS"]
+  },
+  "locations": [
+    {"id":"rcc_hornet_train","name":"Hornet's train","type":"MOVING_TRAIN","descriptionPublic":"The crew's transport running parallel to the target train.","descriptionGM":"Safe staging and extraction platform.","arrivalDescription":"The target train closes alongside at speed.","exits":["rcc_hammerhead_roof"],"npcIds":["rcc_hornet"],"encounterIds":[],"clueIds":[],"secretIds":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_hammerhead_roof","name":"Hammerhead roof","type":"MOVING_TRAIN","descriptionPublic":"Roof of the armored cargo train.","descriptionGM":"Primary boarding route; failed boarding can alert defenders.","arrivalDescription":"Wind and speed make the transfer dangerous.","exits":["rcc_rear_car","rcc_hornet_train"],"npcIds":[],"encounterIds":[],"clueIds":[],"secretIds":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_rear_car","name":"Hammerhead rear car","type":"TRAIN_CAR","descriptionPublic":"Rear cargo car with a roof maintenance hatch and stacked containers.","descriptionGM":"Defended by Red Chrome Legion guards; the containers provide concealment.","arrivalDescription":"Cargo stacks break sight lines inside the car.","exits":["rcc_hammerhead_roof","rcc_middle_car"],"npcIds":["rcc_rear_guards"],"encounterIds":["rcc_enc_rear_guards"],"clueIds":[],"secretIds":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_middle_car","name":"Hammerhead middle car","type":"TRAIN_CAR","descriptionPublic":"A mostly empty car with cargo and a maintenance access port.","descriptionGM":"The port exposes the Hammerhead NET Architecture, including manifest and turret control.","arrivalDescription":"The maintenance port is the notable feature here.","exits":["rcc_rear_car","rcc_front_car"],"npcIds":[],"encounterIds":[],"clueIds":["rcc_clue_manifest"],"secretIds":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_front_car","name":"Hammerhead front cargo car","type":"TRAIN_CAR","descriptionPublic":"The forward cargo car holding the target shipment.","descriptionGM":"Legion defenders and an automated turret protect the four crates.","arrivalDescription":"The target crates are here behind the main defensive position.","exits":["rcc_middle_car","rcc_driver_car"],"npcIds":["rcc_front_guards","rcc_officer"],"encounterIds":["rcc_enc_front_defense"],"clueIds":[],"secretIds":["rcc_secret_cargo"],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_driver_car","name":"Hammerhead driver car","type":"TRAIN_CAR","descriptionPublic":"Control compartment for the normally automated train.","descriptionGM":"The crew can stop the train from here with a vehicle-control check.","arrivalDescription":"Manual controls offer an alternative extraction route.","exits":["rcc_front_car"],"npcIds":[],"encounterIds":[],"clueIds":[],"secretIds":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "npcs": [
+    {"id":"rcc_hornet","name":"Hornet","role":"Fixer / employer","factionId":null,"locationPolicy":"START_AT_BRIEFING","personality":"Professional and guarded about the cargo.","motivation":"Recover the stolen shipment.","goals":["Get all four crates back"],"fears":["Losing the shipment"],"publicKnowledge":"Offers 2,000eb per crew member for successful recovery.","secretKnowledge":"Knows the true contents and intended recipient.","relationships":[],"dialogueGuidance":"State the job and payment; do not volunteer the hidden cargo contents.","availableClues":[],"behaviorTriggers":[],"combatProfileId":null,"persistencePolicy":"PERSIST","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_rear_guards","name":"Rear car Red Chrome Legion guards","role":"Opposition","factionId":"rcc_red_chrome_legion","locationPolicy":"REAR_CAR","personality":"Hostile gang defenders.","motivation":"Protect the train.","goals":["Stop intruders"],"fears":[],"publicKnowledge":null,"secretKnowledge":null,"relationships":[],"dialogueGuidance":null,"availableClues":[],"behaviorTriggers":[],"combatProfileId":"cpred_booster_ganger_shotgun","persistencePolicy":"ENCOUNTER_GROUP","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_front_guards","name":"Front car Red Chrome Legion guards","role":"Opposition","factionId":"rcc_red_chrome_legion","locationPolicy":"FRONT_CAR","personality":"Hostile gang defenders.","motivation":"Protect the stolen cargo.","goals":["Hold the front car"],"fears":[],"publicKnowledge":null,"secretKnowledge":null,"relationships":[],"dialogueGuidance":null,"availableClues":[],"behaviorTriggers":[],"combatProfileId":"cpred_booster_ganger_shotgun","persistencePolicy":"ENCOUNTER_GROUP","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_officer","name":"Red Chrome Legion officer","role":"Opposition leader","factionId":"rcc_red_chrome_legion","locationPolicy":"FRONT_CAR","personality":"Directs the defense.","motivation":"Keep the cargo.","goals":["Defeat or expel intruders"],"fears":[],"publicKnowledge":null,"secretKnowledge":null,"relationships":[],"dialogueGuidance":null,"availableClues":[],"behaviorTriggers":[],"combatProfileId":"cpred_security_operative","persistencePolicy":"PERSIST","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "factions": [
+    {"id":"rcc_red_chrome_legion","name":"Red Chrome Legion","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_iron_sights","name":"Iron Sights","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "creatures": [],
+  "items": [
+    {"id":"rcc_crates","name":"Four DNA-locked crates","sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "clues": [
+    {"id":"rcc_clue_manifest","title":"Hammerhead cargo manifest","locationIds":["rcc_middle_car"],"npcIds":[],"discoveryMethods":["NETRUN"],"prerequisites":[],"information":"The original cargo manifest can be recovered through the train's NET Architecture.","unlocks":[],"repeatable":false,"required":false,"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "secrets": [
+    {"id":"rcc_secret_cargo","information":"Three crates contain military hardware/cyberware; the fourth contains a deadly neurotoxin associated with Hornet's plan for the gang conflict.","prerequisites":[],"revealConditions":[{"type":"FLAG","key":"rcc_cargo_opened"}],"relatedNpcIds":["rcc_hornet"],"relatedLocationIds":["rcc_front_car"],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "rumors": [],
+  "objectives": [
+    {"id":"rcc_obj_recover_cargo","title":"Recover the stolen shipment","description":"Secure all four target crates and return them to Hornet.","type":"PRIMARY","prerequisites":[],"successConditions":[{"type":"FLAG_EQUALS","key":"rcc_cargo_delivered","value":true}],"failureConditions":[],"consequencesSuccess":[{"type":"SET_FLAG","target":"rcc_paid","value":true},{"type":"UPDATE_WORLD_STATE","target":"rcc_gang_war","value":{"outcome":"iron_sights_advantage"}}],"consequencesFailure":[],"unlocks":[],"rewards":[{"type":"EB_PER_CHARACTER","value":2000}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "quests": [],
+  "scenes": [
+    {"id":"rcc_scene_briefing","locationId":"rcc_hornet_train","purpose":"Present the job and preserve player choice.","prerequisites":[],"participants":["rcc_hornet"],"knownFacts":["Payment is 2,000eb per crew member.","Four locked crates are aboard the Hammerhead."],"hiddenFacts":["True cargo contents"],"availableClues":[],"availableEvents":[],"availableEncounters":[],"possibleTriggers":[],"exits":["rcc_hammerhead_roof"],"completionConditions":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_scene_boarding","locationId":"rcc_hammerhead_roof","purpose":"Resolve transfer to the target train.","prerequisites":[],"participants":[],"knownFacts":[],"hiddenFacts":[],"availableClues":[],"availableEvents":["rcc_event_boarding"],"availableEncounters":[],"possibleTriggers":["ON_ENTER_LOCATION"],"exits":["rcc_rear_car"],"completionConditions":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_scene_middle","locationId":"rcc_middle_car","purpose":"Optional Netrunning and information/control opportunity.","prerequisites":[],"participants":[],"knownFacts":["A maintenance port is accessible."],"hiddenFacts":[],"availableClues":["rcc_clue_manifest"],"availableEvents":["rcc_event_netrun"],"availableEncounters":[],"possibleTriggers":["ON_ENTER_LOCATION"],"exits":["rcc_front_car"],"completionConditions":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_scene_front","locationId":"rcc_front_car","purpose":"Resolve the main defense and secure the cargo.","prerequisites":[],"participants":["rcc_front_guards","rcc_officer"],"knownFacts":["The four target crates are present."],"hiddenFacts":["Cargo contents"],"availableClues":[],"availableEvents":["rcc_event_front"],"availableEncounters":["rcc_enc_front_defense"],"possibleTriggers":["ON_ENTER_LOCATION"],"exits":["rcc_driver_car","rcc_middle_car"],"completionConditions":[],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "encounters": [
+    {"id":"rcc_enc_rear_guards","participants":["rcc_rear_guards"],"locationId":"rcc_rear_car","trigger":"ON_HOSTILE_CONTACT","victoryConditions":[],"retreatConditions":[],"consequencesVictory":[{"type":"RESOLVE_ENCOUNTER","target":"rcc_enc_rear_guards"}],"consequencesDefeat":[],"ruleActions":[{"id":"rcc_combat_rear","type":"COMBAT_START","required":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_enc_front_defense","participants":["rcc_front_guards","rcc_officer"],"locationId":"rcc_front_car","trigger":"ON_HOSTILE_CONTACT","victoryConditions":[],"retreatConditions":[],"consequencesVictory":[{"type":"RESOLVE_ENCOUNTER","target":"rcc_enc_front_defense"},{"type":"SET_FLAG","target":"rcc_cargo_secured","value":true}],"consequencesDefeat":[],"ruleActions":[{"id":"rcc_combat_front","type":"COMBAT_START","required":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "events": [
+    {"id":"rcc_event_boarding","trigger":{"type":"ON_ENTER_LOCATION","target":"rcc_hammerhead_roof"},"prerequisites":[],"locationRestrictions":["rcc_hammerhead_roof"],"timeRestrictions":[],"probability":1,"repeatPolicy":"ONCE","content":"Resolve the moving-train boarding attempt.","ruleActions":[{"id":"rcc_boarding_athletics","type":"SKILL_CHECK","skill":"Athletics","difficulty":13,"required":true}],"consequences":[{"type":"SET_FLAG","target":"rcc_boarded_hammerhead","value":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_event_hatch","trigger":{"type":"ON_FLAG","target":"rcc_attempt_hatch"},"prerequisites":[{"type":"LOCATION_IS","locationId":"rcc_hammerhead_roof"}],"locationRestrictions":["rcc_hammerhead_roof"],"timeRestrictions":[],"probability":1,"repeatPolicy":"UNTIL_SUCCESS","content":"Resolve opening the roof maintenance hatch.","ruleActions":[{"id":"rcc_hatch_basic_tech","type":"SKILL_CHECK","skill":"Basic Tech","difficulty":13,"required":true}],"consequences":[{"type":"SET_FLAG","target":"rcc_hatch_open","value":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_event_netrun","trigger":{"type":"ON_FLAG","target":"rcc_attempt_netrun"},"prerequisites":[{"type":"LOCATION_IS","locationId":"rcc_middle_car"}],"locationRestrictions":["rcc_middle_car"],"timeRestrictions":[],"probability":1,"repeatPolicy":"REPEATABLE","content":"Resolve access to the Hammerhead NET Architecture.","ruleActions":[{"id":"rcc_hammerhead_netrun","type":"NET_ARCHITECTURE","architectureId":"rcc_hammerhead_mainframe","required":true}],"consequences":[{"type":"ADD_CLUE","target":"rcc_clue_manifest"}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":4}},
+    {"id":"rcc_event_front","trigger":{"type":"ON_ENTER_LOCATION","target":"rcc_front_car"},"prerequisites":[],"locationRestrictions":["rcc_front_car"],"timeRestrictions":[],"probability":1,"repeatPolicy":"ONCE","content":"Activate the front-car defense state.","ruleActions":[],"consequences":[{"type":"SET_FLAG","target":"rcc_front_reached","value":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_event_stop_train","trigger":{"type":"ON_FLAG","target":"rcc_attempt_stop_train"},"prerequisites":[{"type":"LOCATION_IS","locationId":"rcc_driver_car"}],"locationRestrictions":["rcc_driver_car"],"timeRestrictions":[],"probability":1,"repeatPolicy":"UNTIL_SUCCESS","content":"Resolve stopping the Hammerhead from its controls.","ruleActions":[{"id":"rcc_drive_stop","type":"SKILL_CHECK","skill":"Drive Land Vehicle","difficulty":9,"required":true}],"consequences":[{"type":"SET_FLAG","target":"rcc_train_stopped","value":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}},
+    {"id":"rcc_event_extract_crate","trigger":{"type":"ON_FLAG","target":"rcc_attempt_return_with_crate"},"prerequisites":[{"type":"FLAG","key":"rcc_cargo_secured"}],"locationRestrictions":[],"timeRestrictions":[],"probability":1,"repeatPolicy":"REPEATABLE","content":"Resolve jumping back while carrying a crate.","ruleActions":[{"id":"rcc_return_athletics","type":"SKILL_CHECK","skill":"Athletics","difficulty":15,"required":true}],"consequences":[{"type":"SET_FLAG","target":"rcc_cargo_delivered","value":true}],"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "triggers": [],
+  "conditions": [],
+  "consequences": [],
+  "clocks": [
+    {"id":"rcc_clock_alert","name":"Hammerhead alert","current":0,"max":3,"advanceTriggers":[],"regressTriggers":[],"thresholds":[1,2,3],"thresholdEvents":[],"visibleToPlayer":false,"sourceReference":{"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","pdfPage":3}}
+  ],
+  "timers": [],
+  "stateFlags": [],
+  "relationships": [],
+  "transitions": [],
+  "completionConditions": [{"type":"OBJECTIVE_COMPLETED","objectiveId":"rcc_obj_recover_cargo"}],
+  "failureConditions": [],
+  "rewards": [{"type":"EB_PER_CHARACTER","value":2000}],
+  "randomTables": [],
+  "gmGuidance": [
+    "Do not force the crew to board, fight, Netrun, or extract by one route.",
+    "All DV checks and combat are resolved by the Rules Engine.",
+    "Keep the cargo contents sealed until a valid reveal condition is met.",
+    "The automated turret state depends on alert/control state rather than narrator fiat."
+  ],
+  "sourceReferences": [
+    {"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","chapter":"Red Chrome Cargo","section":"Player Information / Gamemaster Notes","pdfPage":3},
+    {"sourceBook":"RTG-CPR-RedChromeCargo-RED.pdf","chapter":"Red Chrome Cargo","section":"Hammerhead Mainframe","pdfPage":4}
+  ]
+}
