@@ -28,6 +28,9 @@ export class CyberpunkAdventureController{
   }
 
   character(){return this.getCharacter?.()||null}
+  modules(){return this.registry.list()}
+  getModule(id){return this.registry.get(id)}
+  startModes(){return ['OFFICIAL_ADVENTURE','GUIDED_CAMPAIGN','SOLO','SANDBOX','TAVERN_START']}
   campaign(c=this.character()){if(!c)return null;c.campaignState=c.campaignState||{};return c.campaignState}
   persistedState(c=this.character()){return this.campaign(c)?.adventureState||null}
 
