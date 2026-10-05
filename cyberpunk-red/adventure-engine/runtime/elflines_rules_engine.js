@@ -3,79 +3,19 @@
  */
 const clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
 const int=(v,d=0)=>Number.isFinite(Number(v))?Math.trunc(Number(v)):d;
-const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 const assert=(ok,msg)=>{if(!ok)throw new Error(msg)};
-
-export const ELO_RULES_VERSION=1;
-export const ELO_MAX_RANK=10;
-export const ELO_DEATH_TAX_GP=2000;
-export const ELO_PVP_BOUNTY_GP=1000;
-export const ELO_EB_TO_GP=100;
-
+export const ELO_RULES_VERSION=1,ELO_MAX_RANK=10,ELO_DEATH_TAX_GP=2000,ELO_PVP_BOUNTY_GP=1000,ELO_EB_TO_GP=100;
 export const ELO_X2_SKILLS=Object.freeze(['Archery','Melee Weapon','Evasion/Dance','First Aid/Paramedic/Surgery']);
-export const ELO_SKILLS=Object.freeze([
- 'Animal Handling','Language (Elven)','Archery','Melee Weapon','Athletics/Contortionist','Perception',
- 'Basic Tech/Weaponstech','Persuasion/Trading','Brawling','Pick Lock/Pick Pocket','Conceal/Reveal Object',
- 'Pilot Sea Vehicle','Composition/Education','Play Instrument','Concentration','Riding','Endurance/Resist Torture/Drugs',
- 'Stealth','Evasion/Dance','Tracking','First Aid/Paramedic/Surgery','Wilderness Survival'
-]);
+export const ELO_SKILLS=Object.freeze(['Animal Handling','Language (Elven)','Archery','Melee Weapon','Athletics/Contortionist','Perception','Basic Tech/Weaponstech','Persuasion/Trading','Brawling','Pick Lock/Pick Pocket','Conceal/Reveal Object','Pilot Sea Vehicle','Composition/Education','Play Instrument','Concentration','Riding','Endurance/Resist Torture/Drugs','Stealth','Evasion/Dance','Tracking','First Aid/Paramedic/Surgery','Wilderness Survival']);
 export const ELO_TITLES=Object.freeze({INT:'Sage',REF:'Bowmaster',DEX:'Bladedancer',TECH:'Quickhand',COOL:'Warmheart',WILL:'Wildblood',MOVE:'Windkin',BODY:'Barkshield',EMP:'Druid',EVEN:'Wayfarer'});
-export const ELO_ARMORY=Object.freeze({
- leather_armor:{name:'Leather Armor',priceGp:20},studded_leather:{name:'Studded Leather Armor',priceGp:50},chainmail:{name:'Chainmail Armor',priceGp:100},full_plate:{name:'Full Plate Armor',priceGp:500},
- dagger:{name:'Dagger',priceGp:50},shortsword:{name:'Shortsword',priceGp:50},longsword:{name:'Longsword',priceGp:100},greataxe:{name:'Greataxe',priceGp:500},shield:{name:'Shield',priceGp:100},bow:{name:'Bow',priceGp:100},
- arrow:{name:'Arrow',priceGp:1},poison_arrow:{name:'Poison Arrow',priceGp:10},vial_poison:{name:'Vial of Poison',priceGp:100},sacred_herbs:{name:'Sacred Herbs',priceGp:50}
-});
-
-export function validateEloCharacter(character,{creation=false}={}){
- const c=character||{}, errors=[]; const stats=c.stats||{}, skills=c.skills||{};
- if('LUCK' in stats) errors.push('ELO characters do not use LUCK');
- for(const [k,v] of Object.entries(stats)){
-   if(k==='LUCK')continue; const n=int(v,-999); if(creation&&(n<3||n>8))errors.push(`STAT ${k} must be 3..8 at creation`); if(n>10)errors.push(`STAT ${k} cannot exceed 10`);
- }
- if(creation){const total=Object.entries(stats).filter(([k])=>k!=='LUCK').reduce((s,[,v])=>s+int(v),0);if(total!==50)errors.push('creation requires exactly 50 STAT points');}
- for(const [k,v] of Object.entries(skills)){if(!ELO_SKILLS.includes(k))errors.push(`unknown ELO Skill ${k}`);if(creation&&int(v)>6)errors.push(`Skill ${k} cannot exceed 6 at creation`);if(int(v)>10)errors.push(`Skill ${k} cannot exceed 10`);}
- if(int(skills['Language (Elven)'])<4)errors.push('Language (Elven) must be at least 4');
- return {ok:errors.length===0,errors};
-}
-
-export function createEloState({elfName,stats,skills,equipment=[],gp=200,elflineId=null,lastCampId=null}={}){
- const state={version:ELO_RULES_VERSION,elfName:String(elfName||'').trim(),stats:clone(stats||{}),skills:clone(skills||{}),rank:0,title:null,gp:int(gp),equipment:clone(equipment),elflineId,lastCampId,reviveSickness:false,miasma:false,hp:null,maxHp:null,criticalInjuries:[],pendingPvpBounties:[],history:[]};
- const validation=validateEloCharacter(state,{creation:true}); assert(validation.ok,validation.errors.join('; '));
- assert(state.elfName,'Elfname is required'); assert(state.gp>=0,'gp cannot be negative'); return state;
-}
-
-export function setMiasma(state,active){const s=clone(state);s.miasma=!!active;s.history.push({type:'MIASMA',active:s.miasma});return s;}
-export function setCamp(state,campId){const s=clone(state);s.lastCampId=campId||null;s.history.push({type:'CAMP_SET',campId:s.lastCampId});return s;}
-export function canTreat(state){return !state?.miasma;}
-export function canAcceleratedHeal(state){return !state?.miasma;}
-export function canPvp(state){return !!state?.miasma;}
-
-export function resolveDeath(state,{killerPlayerId=null,killerElflineId=null}={}){
- const s=clone(state); const sameElfline=!!killerElflineId&&!!s.elflineId&&killerElflineId===s.elflineId;
- let sacrificed=0;
- if(s.gp>=ELO_DEATH_TAX_GP){s.gp-=ELO_DEATH_TAX_GP;sacrificed=ELO_DEATH_TAX_GP;s.reviveSickness=false;}else{s.reviveSickness=true;}
- let bounty=0;
- if(s.miasma&&killerPlayerId&&!sameElfline&&sacrificed){bounty=Math.min(ELO_PVP_BOUNTY_GP,sacrificed);}
- if(s.miasma&&killerPlayerId&&!sameElfline&&!sacrificed){s.pendingPvpBounties.push({killerPlayerId,amountGp:ELO_PVP_BOUNTY_GP});}
- s.locationId=s.lastCampId||null;s.hp=s.maxHp;s.history.push({type:'DEATH_RESPAWN',sacrificedGp:sacrificed,bountyGp:bounty,killerPlayerId});
- return {state:s,sacrificedGp:sacrificed,bountyGp:bounty,respawnLocationId:s.locationId};
-}
-
-export function payReviveSickness(state){const s=clone(state);assert(s.reviveSickness,'character has no Revive Sickness');assert(s.gp>=ELO_DEATH_TAX_GP,'insufficient gp');s.gp-=ELO_DEATH_TAX_GP;s.reviveSickness=false;const payouts=s.pendingPvpBounties.map(x=>({...x}));s.pendingPvpBounties=[];s.history.push({type:'REVIVE_SICKNESS_REMOVED',costGp:ELO_DEATH_TAX_GP,payouts});return {state:s,payouts};}
-export function effectiveMove(state){return state?.reviveSickness?1:int(state?.stats?.MOVE,0);}
-
-export function buyGp(state,eb){const s=clone(state), spent=int(eb);assert(spent>=0,'eb must be non-negative');s.gp+=spent*ELO_EB_TO_GP;s.history.push({type:'BUY_GP',spentEb:spent,gainedGp:spent*ELO_EB_TO_GP});return s;}
-export function buyArmoryItem(state,itemId,quantity=1){const s=clone(state),item=ELO_ARMORY[itemId],q=int(quantity);assert(item,'unknown armory item');assert(q>0,'quantity must be positive');const cost=item.priceGp*q;assert(s.gp>=cost,'insufficient gp');s.gp-=cost;for(let i=0;i<q;i++)s.equipment.push(itemId);s.history.push({type:'ARMORY_BUY',itemId,quantity:q,costGp:cost});return s;}
-
-export function rankUp(state,choice){const s=clone(state);assert(s.rank<ELO_MAX_RANK,'already max Rank');const next=s.rank+1;
- if(next<=3){assert(choice?.type==='STAT','Ranks 1-3 require STAT increase');const stat=String(choice.stat||'');assert(stat&&stat!=='LUCK'&&stat in s.stats,'invalid STAT');assert(int(s.stats[stat])<10,'STAT cap reached');s.stats[stat]=int(s.stats[stat])+1;}
- else {assert(choice?.type==='SKILLS','Ranks 4-10 require Skill improvement');const names=Array.isArray(choice.skills)?choice.skills:[];if(names.length===1){assert(ELO_X2_SKILLS.includes(names[0]),'single Skill must be x2 cost');assert(int(s.skills[names[0]])<=8,'Skill cap would be exceeded');s.skills[names[0]]=int(s.skills[names[0]])+2;}else{assert(names.length===2&&names[0]!==names[1],'choose two different non-x2 Skills');for(const name of names){assert(ELO_SKILLS.includes(name)&&!ELO_X2_SKILLS.includes(name),'invalid non-x2 Skill');assert(int(s.skills[name])<=8,'Skill cap would be exceeded');s.skills[name]=int(s.skills[name])+2;}}}
- s.rank=next;if(next===3)s.title=deriveTitle(s);s.history.push({type:'RANK_UP',rank:next,choice:clone(choice),title:s.title});return s;}
-
-export function deriveTitle(state){const base=state?.creationStats||null;const stats=state?.stats||{};if(base){let max=-Infinity,w=[];for(const k of Object.keys(ELO_TITLES).filter(k=>k!=='EVEN')){const d=int(stats[k])-int(base[k]);if(d>max){max=d;w=[k]}else if(d===max)w.push(k)}return w.length===1?ELO_TITLES[w[0]]:ELO_TITLES.EVEN;}
- const vals=Object.entries(stats).filter(([k])=>k!=='LUCK');const max=Math.max(...vals.map(([,v])=>int(v)));const winners=vals.filter(([,v])=>int(v)===max).map(([k])=>k);return winners.length===1?(ELO_TITLES[winners[0]]||ELO_TITLES.EVEN):ELO_TITLES.EVEN;}
-
-export function resolveOutOfCombatHealing(state){const s=clone(state);assert(!s.miasma,'accelerated healing suspended by Miasma');if(s.maxHp!=null)s.hp=s.maxHp;s.history.push({type:'ACCELERATED_HEAL',durationMinutes:1});return s;}
-export function repairQuote(cyberpunkRedCost){const n=Number(cyberpunkRedCost);assert(Number.isFinite(n)&&n>=0,'invalid repair cost');return {durationMinutes:1,costGp:n/2};}
-
-export function buildEloAiContext(state){return Object.freeze({authority:'ELFLINES_RULES_ENGINE',readOnly:true,rank:int(state?.rank),title:state?.title||null,gp:int(state?.gp),miasma:!!state?.miasma,reviveSickness:!!state?.reviveSickness,effectiveMove:effectiveMove(state),lastCampId:state?.lastCampId||null,forbidden:['mutate_state','fabricate_rolls','override_rules','decide_player_choices']});}
+export const ELO_ARMORY=Object.freeze({leather_armor:{name:'Leather Armor',priceGp:20},studded_leather:{name:'Studded Leather Armor',priceGp:50},chainmail:{name:'Chainmail Armor',priceGp:100},full_plate:{name:'Full Plate Armor',priceGp:500},dagger:{name:'Dagger',priceGp:50},shortsword:{name:'Shortsword',priceGp:50},longsword:{name:'Longsword',priceGp:100},greataxe:{name:'Greataxe',priceGp:500},shield:{name:'Shield',priceGp:100},bow:{name:'Bow',priceGp:100},arrow:{name:'Arrow',priceGp:1},poison_arrow:{name:'Poison Arrow',priceGp:10},vial_poison:{name:'Vial of Poison',priceGp:100},sacred_herbs:{name:'Sacred Herbs',priceGp:50}});
+export function validateEloCharacter(c,{creation=false}={}){c=c||{};const errors=[],stats=c.stats||{},skills=c.skills||{};if('LUCK'in stats)errors.push('ELO characters do not use LUCK');for(const[k,v]of Object.entries(stats)){if(k==='LUCK')continue;const n=int(v,-999);if(creation&&(n<3||n>8))errors.push(`STAT ${k} must be 3..8 at creation`);if(n>10)errors.push(`STAT ${k} cannot exceed 10`)}if(creation&&Object.entries(stats).filter(([k])=>k!=='LUCK').reduce((s,[,v])=>s+int(v),0)!==50)errors.push('creation requires exactly 50 STAT points');for(const[k,v]of Object.entries(skills)){if(!ELO_SKILLS.includes(k))errors.push(`unknown ELO Skill ${k}`);if(creation&&int(v)>6)errors.push(`Skill ${k} cannot exceed 6 at creation`);if(int(v)>10)errors.push(`Skill ${k} cannot exceed 10`)}if(int(skills['Language (Elven)'])<4)errors.push('Language (Elven) must be at least 4');return{ok:!errors.length,errors}}
+export function createEloState({elfName,stats,skills,equipment=[],gp=200,elflineId=null,lastCampId=null}={}){const state={version:ELO_RULES_VERSION,elfName:String(elfName||'').trim(),stats:clone(stats||{}),creationStats:clone(stats||{}),skills:clone(skills||{}),rank:0,title:null,gp:int(gp),equipment:clone(equipment),elflineId,lastCampId,reviveSickness:false,miasma:false,hp:null,maxHp:null,criticalInjuries:[],pendingPvpBounties:[],history:[]};const v=validateEloCharacter(state,{creation:true});assert(v.ok,v.errors.join('; '));assert(state.elfName,'Elfname is required');assert(state.gp>=0,'gp cannot be negative');return state}
+export function setMiasma(state,active){const s=clone(state);s.miasma=!!active;s.history.push({type:'MIASMA',active:s.miasma});return s}export function setCamp(state,campId){const s=clone(state);s.lastCampId=campId||null;s.history.push({type:'CAMP_SET',campId:s.lastCampId});return s}export const canTreat=state=>!state?.miasma;export const canAcceleratedHeal=state=>!state?.miasma;export const canPvp=state=>!!state?.miasma;
+export function resolveDeath(state,{killerPlayerId=null,killerElflineId=null}={}){const s=clone(state),same=!!killerElflineId&&!!s.elflineId&&killerElflineId===s.elflineId;let sacrificed=0;if(s.gp>=ELO_DEATH_TAX_GP){s.gp-=ELO_DEATH_TAX_GP;sacrificed=ELO_DEATH_TAX_GP;s.reviveSickness=false}else s.reviveSickness=true;let bounty=0;if(s.miasma&&killerPlayerId&&!same&&sacrificed)bounty=Math.min(ELO_PVP_BOUNTY_GP,sacrificed);if(s.miasma&&killerPlayerId&&!same&&!sacrificed)s.pendingPvpBounties.push({killerPlayerId,amountGp:ELO_PVP_BOUNTY_GP});s.locationId=s.lastCampId||null;s.hp=s.maxHp;s.history.push({type:'DEATH_RESPAWN',sacrificedGp:sacrificed,bountyGp:bounty,killerPlayerId});return{state:s,sacrificedGp:sacrificed,bountyGp:bounty,respawnLocationId:s.locationId}}
+export function payReviveSickness(state){const s=clone(state);assert(s.reviveSickness,'character has no Revive Sickness');assert(s.gp>=ELO_DEATH_TAX_GP,'insufficient gp');s.gp-=ELO_DEATH_TAX_GP;s.reviveSickness=false;const payouts=s.pendingPvpBounties.map(x=>({...x}));s.pendingPvpBounties=[];s.history.push({type:'REVIVE_SICKNESS_REMOVED',costGp:ELO_DEATH_TAX_GP,payouts});return{state:s,payouts}}export const effectiveMove=state=>state?.reviveSickness?1:int(state?.stats?.MOVE,0);
+export function buyGp(state,eb){const s=clone(state),spent=int(eb);assert(spent>=0,'eb must be non-negative');s.gp+=spent*ELO_EB_TO_GP;s.history.push({type:'BUY_GP',spentEb:spent,gainedGp:spent*ELO_EB_TO_GP});return s}export function buyArmoryItem(state,itemId,quantity=1){const s=clone(state),item=ELO_ARMORY[itemId],q=int(quantity);assert(item,'unknown armory item');assert(q>0,'quantity must be positive');const cost=item.priceGp*q;assert(s.gp>=cost,'insufficient gp');s.gp-=cost;for(let i=0;i<q;i++)s.equipment.push(itemId);s.history.push({type:'ARMORY_BUY',itemId,quantity:q,costGp:cost});return s}
+export function deriveTitle(state){const stats=state?.stats||{},base=state?.creationStats||stats;let max=-Infinity,w=[];for(const k of Object.keys(ELO_TITLES).filter(k=>k!=='EVEN')){const d=int(stats[k])-int(base[k]);if(d>max){max=d;w=[k]}else if(d===max)w.push(k)}return w.length===1?ELO_TITLES[w[0]]:ELO_TITLES.EVEN}
+export function rankUp(state,choice){const s=clone(state);assert(s.rank<ELO_MAX_RANK,'already max Rank');const next=s.rank+1;if(next<=3){assert(choice?.type==='STAT','Ranks 1-3 require STAT increase');const stat=String(choice.stat||'');assert(stat&&stat!=='LUCK'&&stat in s.stats,'invalid STAT');assert(int(s.stats[stat])<10,'STAT cap reached');s.stats[stat]=int(s.stats[stat])+1}else{assert(choice?.type==='SKILLS','Ranks 4-10 require Skill improvement');const names=Array.isArray(choice.skills)?choice.skills:[];if(names.length===1){assert(ELO_X2_SKILLS.includes(names[0]),'single Skill must be x2 cost');assert(int(s.skills[names[0]])<=8,'Skill cap would be exceeded');s.skills[names[0]]=int(s.skills[names[0]])+2}else{assert(names.length===2&&names[0]!==names[1],'choose two different non-x2 Skills');for(const name of names){assert(ELO_SKILLS.includes(name)&&!ELO_X2_SKILLS.includes(name),'invalid non-x2 Skill');assert(int(s.skills[name])<=8,'Skill cap would be exceeded');s.skills[name]=int(s.skills[name])+2}}}s.rank=next;if(next===3)s.title=deriveTitle(s);s.history.push({type:'RANK_UP',rank:next,choice:clone(choice),title:s.title});return s}
+export function resolveOutOfCombatHealing(state){const s=clone(state);assert(!s.miasma,'accelerated healing suspended by Miasma');if(s.maxHp!=null)s.hp=s.maxHp;s.history.push({type:'ACCELERATED_HEAL',durationMinutes:1});return s}export function repairQuote(cost){const n=Number(cost);assert(Number.isFinite(n)&&n>=0,'invalid repair cost');return{durationMinutes:1,costGp:n/2}}
+export function buildEloAiContext(state){return Object.freeze({authority:'ELFLINES_RULES_ENGINE',readOnly:true,rank:int(state?.rank),title:state?.title||null,gp:int(state?.gp),miasma:!!state?.miasma,reviveSickness:!!state?.reviveSickness,effectiveMove:effectiveMove(state),lastCampId:state?.lastCampId||null,forbidden:['mutate_state','fabricate_rolls','override_rules','decide_player_choices']})}
