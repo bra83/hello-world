@@ -17,6 +17,7 @@
     {"id":"tales_red_stitch_to_wear","path":"./tales_red_stitch_to_wear.json"},
     {"id":"tales_red_reaping_reaper","path":"./tales_red_reaping_reaper.json"},
     {"id":"tales_red_staying_vigilant","path":"./tales_red_staying_vigilant.json"},
-    {"id":"tales_red_bathed_in_red","path":"./tales_red_bathed_in_red.json"}
+    {"id":"tales_red_bathed_in_red","path":"./tales_red_bathed_in_red.json"},
+    {"id":"tales_red_one_red_night","path":"./tales_red_one_red_night.json"}
   ]
 }
