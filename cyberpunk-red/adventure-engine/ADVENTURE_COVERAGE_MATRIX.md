@@ -20,7 +20,7 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 | Tales of the RED — Haven't Got a Stitch to Wear | Three-day contract; Night Market; blockade; Fixie; John Doe; Rambling Rose; Lightning Logistics | Deadline/reward + non-forced-combat + John Doe + multi-solution + custody tests | **IMPLEMENTED** |
 | Tales of the RED — Reaping the Reaper | Two-stage Stiles operation; five-round broadcast; optional Renzer; alternate Prime route; dual endings | Contracts/equipment + clock consequence + combat/NET authority + secret + ending tests | **IMPLEMENTED** |
 | Tales of the RED — Staying Vigilant | Trace investigation; tent-city/alley route ownership; Hardhat stealth/loud state; sealed Nat/Continental truth; Lowball bounty; player-owned Friend/Foe/switch-side branches; Rules-owned Hot Zone chase; Nomad Camp/Lowball consequences | Deterministic start + distinct 1,000eb/2,000eb offers + route + infiltration + sealed truth + player agency + chase threshold + dual-resolution tests; CI Adventure Engine/Syntax/dry-run PASS | **IMPLEMENTED** |
-| Tales of the RED — Bathed in Red | Source indexed; first half of closing two-parter | No universal-module test yet | **PARTIAL** |
+| Tales of the RED — Bathed in Red | Delirium ransomware/murder crisis; Home/Lost Kids; malicious Megabite; Lilah/Cactus Water; Knight Exchange; four player-owned outcomes; explicit part-two escalation | Deterministic start + sealed Red Knight/Dave truth + separate 250eb/1,000eb offers + Rules-owned Cybertech/disarm/escape + four-resolution consequence tests; CI Adventure Engine/Syntax/dry-run PASS | **IMPLEMENTED** |
 | Tales of the RED — One Red Night | Source indexed; second half of closing two-parter | No universal-module test yet | **PARTIAL** |
 | Elflines Online | Source present; extraction pending | No universal-module test | **PARTIAL** |
 | Elflines Online EP1 | Source present; extraction pending | No universal-module test | **PARTIAL** |
@@ -34,6 +34,10 @@ R5.72 verifies event location restrictions, repeatable-event operation keys, UNT
 ## Tales of the RED invariants
 
 Street Stories contains nine missions and explicitly uses the Beat Chart structure: Background, Rest of the Story, Setting, Opposition and Hook followed by Developments, Cliffhangers, optional Beats, Climaxes and Resolutions. Beat flow is not assumed linear; branches, multiple Climaxes and multiple endings remain explicit state rather than narrator railroad.
+
+### Bathed in Red
+
+The eighth Street Story is now deterministic persistent state. Delirium's ransomware crisis and the Crew's suspect status persist independently of narration. Dave's victim status, Red Knight's responsibility and the Cactus Water/Petrochem truth remain sealed until their authored discovery states. Lilah's 250eb meeting payment and negotiable 1,000eb-per-Edgerunner job are distinct offers and cannot be auto-accepted. The Knight Exchange preserves all four authored outcomes: save Dave, save Lilah, save both through coordinated/clever action, or reject the forced binary choice. Cybertech DV17, disarm resolution, warehouse escape checks and damage stay under Rules Engine authority. Memories of Home persists the 10% Home Night Market discount/favors; Prickly Conclusion persists Lilah's additional 500eb reward and public clearing; A New Enemy explicitly escalates Red Knight into part-two war state; Thrown in Jail persists the one-night imprisonment and mysterious release. AI cannot choose the victim, fabricate rolls, leak Red Knight's identity or mutate this state.
 
 ### Staying Vigilant
 
