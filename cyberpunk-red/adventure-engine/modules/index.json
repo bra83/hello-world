@@ -15,6 +15,7 @@
     {"id":"tales_red_popcorn_kibble","path":"./tales_red_popcorn_kibble.json"},
     {"id":"tales_red_drummer_whale","path":"./tales_red_drummer_whale.json"},
     {"id":"tales_red_stitch_to_wear","path":"./tales_red_stitch_to_wear.json"},
-    {"id":"tales_red_reaping_reaper","path":"./tales_red_reaping_reaper.json"}
+    {"id":"tales_red_reaping_reaper","path":"./tales_red_reaping_reaper.json"},
+    {"id":"tales_red_staying_vigilant","path":"./tales_red_staying_vigilant.json"}
   ]
 }
