@@ -1,6 +1,6 @@
 # ADVENTURE_COVERAGE_MATRIX — Cyberpunk RED
 
-Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + tests; **PARTIAL** = conversion incomplete; **BLOCKED** = missing required dependency.
+Status: **IMPLEMENTED** = validated deterministic runtime/content path + tests; **PARTIAL** = conversion incomplete; **BLOCKED** = missing required dependency.
 
 | Adventure / source | State graph / mechanics | Runtime evidence | Status |
 |---|---|---|---|
@@ -19,47 +19,29 @@ Status: **IMPLEMENTED** = validated AdventureModule + persistent runtime path + 
 | Tales of the RED — Drummer and the Whale | Waterfront/container; underwater/ROV/tunnels; MacDonnelson; cargo choice; four climax branches | Deterministic start + sealed-secret + Rules authority + cargo/multi-climax tests | **IMPLEMENTED** |
 | Tales of the RED — Haven't Got a Stitch to Wear | Three-day contract; Night Market; blockade; Fixie; John Doe; Rambling Rose; Lightning Logistics | Deadline/reward + non-forced-combat + John Doe + multi-solution + custody tests | **IMPLEMENTED** |
 | Tales of the RED — Reaping the Reaper | Two-stage Stiles operation; five-round broadcast; optional Renzer; alternate Prime route; dual endings | Contracts/equipment + clock consequence + combat/NET authority + secret + ending tests | **IMPLEMENTED** |
-| Tales of the RED — Staying Vigilant | Trace investigation; tent-city/alley route ownership; Hardhat stealth/loud state; sealed Nat/Continental truth; Lowball bounty; player-owned Friend/Foe/switch-side branches; Rules-owned Hot Zone chase; Nomad Camp/Lowball consequences | Deterministic start + distinct 1,000eb/2,000eb offers + route + infiltration + sealed truth + player agency + chase threshold + dual-resolution tests; CI Adventure Engine/Syntax/dry-run PASS | **IMPLEMENTED** |
-| Tales of the RED — Bathed in Red | Delirium ransomware/murder crisis; Home/Lost Kids; malicious Megabite; Lilah/Cactus Water; Knight Exchange; four player-owned outcomes; explicit part-two escalation | Deterministic start + sealed Red Knight/Dave truth + separate 250eb/1,000eb offers + Rules-owned Cybertech/disarm/escape + four-resolution consequence tests; CI Adventure Engine/Syntax/dry-run PASS | **IMPLEMENTED** |
-| Tales of the RED — One Red Night | Pleasant Valley/3,000eb Deckard contract; Mister Rice Guy/Protocon multi-solution misunderstanding; Night City Plaza bounded crowd state; silver-card multi-route investigation; Seral Grove NET/security/final confrontation; sealed Roman identity; player-owned Out in the Light/Buried Past endings | Deterministic start + sealed identity + contract/Protocon/crowd + multi-route Grove clue + Rules-owned combat/NET/medical + dual-resolution tests; CI Adventure Engine/Syntax/dry-run PASS | **IMPLEMENTED** |
-| Elflines Online | Source present; extraction pending | No universal-module test | **PARTIAL** |
-| Elflines Online EP1 | Source present; extraction pending | No universal-module test | **PARTIAL** |
+| Tales of the RED — Staying Vigilant | Trace investigation; route/infiltration ownership; sealed Nat truth; Friend/Foe/switch-side; Hot Zone chase | Dedicated deterministic/agency/chase tests + CI PASS | **IMPLEMENTED** |
+| Tales of the RED — Bathed in Red | Delirium crisis; Home/Lost Kids; Megabite; Lilah; Knight Exchange; four player-owned outcomes | Dedicated secret/offer/Rules/outcome tests + CI PASS | **IMPLEMENTED** |
+| Tales of the RED — One Red Night | Deckard contract; Protocon; Plaza crowd; Grove investigation; sealed Roman identity; dual endings | Dedicated secret/contract/multi-route/Rules/resolution tests + CI PASS | **IMPLEMENTED** |
+| Elflines Online | Deterministic ELO rules authority + persistent session/save-load + encounter/Miasma state + social authority routing + read-only AI context. Razorfire Caverns correctly classified as source vignette, not fabricated adventure. | `elflines_rules_engine` suite + 6 integration tests; Adventure Engine suite, syntax/JSON validation and R5.72 patch dry-run PASS on `5b7b8a1fc95ebc45af50e5cd8b98bab5ed307be1` | **IMPLEMENTED** |
+| Elflines Online EP1 | Source verified; pack registry wired; ten Night City players, ten ELO PCs, pregenerated elves/social hooks still require structured deterministic content registry | Base integration gate green; detailed EP1 conversion pending | **PARTIAL** |
 | Single Shot Pack | Source present; adventure enumeration/conversion pending | No universal-module test | **PARTIAL** |
 | CEMK — The Jacket | Source/maps present; CEMK mechanics partly exist in VTT; adventure conversion pending | No universal-module test | **PARTIAL** |
 
 ## Runtime hardening coverage
-
 R5.72 verifies event location restrictions, repeatable-event operation keys, UNTIL_SUCCESS retries after blocked Rules Engine resolution, engine-gated objective success/failure, idempotent consequences, immediate completion re-evaluation, GM-only unrevealed secrets, save/load separation, deterministic host RNG and AI intent authority boundaries.
 
+## Elflines Online invariants
+The base Elflines Online DLC is a rules/content supplement. Razorfire Caverns is presented as Daeric Sylar's play vignette/example, not a complete authored adventure or dungeon graph; the engine must not hallucinate missing rooms, objectives, bosses, rewards or quest gates and label them canonical. ELO now persists its own character/session state, Miasma/encounter state, enabled source packs and history; save/load rejects incompatible versions. Direct interaction with real players routes to the Cyberpunk RED character authority while ELO NPC mechanics route to the ELO character authority. AI receives read-only context and cannot mutate state, fabricate rolls, invent source quests, reveal sealed information, force scenes, decide player choices or bypass Rules Engine. EP1 remains PARTIAL until its reusable NPC/PC/pregenerated content is structurally registered rather than merely source-indexed.
+
 ## Tales of the RED invariants
-
-Street Stories contains nine missions and explicitly uses the Beat Chart structure: Background, Rest of the Story, Setting, Opposition and Hook followed by Developments, Cliffhangers, optional Beats, Climaxes and Resolutions. Beat flow is not assumed linear; branches, multiple Climaxes and multiple endings remain explicit state rather than narrator railroad. **All nine Street Stories now have deterministic persistent AdventureModules with dedicated tests.**
-
-### One Red Night
-
-The ninth Street Story closes the Red Knight two-parter as deterministic persistent state. Michael Deckard's 3,000eb contract and one-month apartment access are explicit player-owned terms. The Mister Rice Guy misunderstanding never forces combat: Protocon can be convinced through the authored social/strategic paths and Shannah's optional 500eb concert hire remains distinct. Night City Plaza persists the authored neutral crowd rating with -2/+2 bounds while crowd-control, performance-crisis and combat resolution remain Rules Engine authority. The silver keycard can lead to Seral Grove through Protocon, Michael, Data Pool/Library Search, a Fixer or legitimate creative investigation. Seral Grove's security, NET Architecture and final confrontation remain mechanical dependencies rather than AI narration. Roman Deckard's Red Knight identity and Michael's prior knowledge remain sealed until the Grove evidence is legitimately recovered. After Red Knight is defeated, medical aid/custody/death and the evidence disposition remain player-owned. Out in the Light persists zero Michael payment, revoked apartment access, Michael hostility and Protocon friendship; Buried Past persists destruction/concealment of evidence and Michael's promised 3,000eb payment. AI cannot reveal Roman early, choose an ending, fabricate rolls or mutate state.
-
-### Bathed in Red
-
-The eighth Street Story is now deterministic persistent state. Delirium's ransomware crisis and the Crew's suspect status persist independently of narration. Dave's victim status, Red Knight's responsibility and the Cactus Water/Petrochem truth remain sealed until their authored discovery states. Lilah's 250eb meeting payment and negotiable 1,000eb-per-Edgerunner job are distinct offers and cannot be auto-accepted. The Knight Exchange preserves all four authored outcomes: save Dave, save Lilah, save both through coordinated/clever action, or reject the forced binary choice. Cybertech DV17, disarm resolution, warehouse escape checks and damage stay under Rules Engine authority. Memories of Home persists the 10% Home Night Market discount/favors; Prickly Conclusion persists Lilah's additional 500eb reward and public clearing; A New Enemy explicitly escalates Red Knight into part-two war state; Thrown in Jail persists the one-night imprisonment and mysterious release. AI cannot choose the victim, fabricate rolls, leak Red Knight's identity or mutate this state.
-
-### Staying Vigilant
-
-The seventh Street Story is now deterministic persistent state. Trace Santiago's 1,000eb-per-Edgerunner investigation is distinct from Lowball's later 2,000eb-per-person bounty. The Crew owns the tent-city versus back-alley route and the warehouse retains separate stealth/loud state. Nat's Jodes identity, Pack history and Continental Brands connection remain sealed until legitimately learned. The engine never labels Nat a cyberpsycho as established truth and never chooses Friend or Foe for the player; switching sides is also explicit persistent state. The Friend branch delegates every Hot Zone vehicle Maneuver and attack to the Rules Engine while persisting the authored seven-success escape threshold. The Foe branch keeps Nat/Trace opposition and bounty consequence distinct. Nomad Camp preserves Trace's 1,000eb payment, Nat's favor and the stronger Continental Brands expose; Lowball preserves the 2,000eb bounty, zero Trace payment and weaker expose.
-
-### Reaping the Reaper
-
-The sixth mission is a persistent two-stage rogue-AI hunt. Major Stiles' contracts, Faisal equipment, five-round transmitter clock, optional Renzer alliance, alternate Prime-tracking route and independent Prime-destroyed/Prime-escaped endings remain explicit state. Mechanical resolution remains Rules Engine authority and Reaper/Braingen/Prime information stays sealed until discovered.
+Street Stories contains nine missions and explicitly uses the Beat Chart structure. Beat flow is not assumed linear; branches, multiple Climaxes and multiple endings remain explicit state rather than narrator railroad. **All nine Street Stories have deterministic persistent AdventureModules with dedicated tests.**
 
 ## Hope Reborn invariants
-
 Hope Reborn is six interconnected missions intended to build on one another. All six missions have detailed AdventureModules. Sequence persists independently of narration; optional Beats, player-selected branches and path switching remain explicit. Rumors/Infobox knowledge are gated information, not free narrator knowledge.
 
 ## Source inventory verified in Drive
-
 Canonical Drive sources include Hope Reborn v1.1 + Hope Reborn+ DLC, Tales of the RED / Street Stories, Red Chrome Cargo, Elflines Online + EP1, Single Shot Pack, Edgerunners Mission Kit/The Jacket, Core v1.25, Interface RED, Black Chrome, Danger Gal Dossier and support material.
 
 ## Conversion gate
-
 A row cannot become IMPLEMENTED merely because a PDF is indexed or legacy JSON exists. Required evidence remains:
-`AdventureModule → validated references → AdventureState → playable triggers/conditions/consequences → save/load → AI context → mechanical dependency resolution → runtime tests`.
+`source authority → deterministic schema/registry → persistent state where applicable → playable triggers/conditions/consequences for actual adventures → save/load → AI context → mechanical dependency resolution → runtime tests`.
