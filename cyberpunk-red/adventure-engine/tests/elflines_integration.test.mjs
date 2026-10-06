@@ -1,0 +1,12 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createEloState} from '../runtime/elflines_rules_engine.js';
+import {createEloSession,enableEloPack,enterEloEncounter,leaveEloEncounter,routeEloSocialAuthority,serializeEloSession,loadEloSession,buildEloAdventureContext,ELO_RAZORFIRE_CLASSIFICATION,ELO_SOURCE_PACKS} from '../runtime/elflines_integration.js';
+const stats={INT:6,REF:6,DEX:6,TECH:6,COOL:6,WILL:5,MOVE:5,BODY:5,EMP:5};
+const skills={'Language (Elven)':4};
+const make=()=>createEloSession({sessionId:'s1',playerCharacterId:'pc1',eloCharacter:createEloState({elfName:'Test Elf',stats,skills})});
+test('session round-trips deterministic persistent ELO state',()=>{let s=make();s=enableEloPack(s,'ep1');s=enterEloEncounter(s,{encounterId:'e1',locationId:'miasmalands',miasma:true});const x=loadEloSession(serializeEloSession(s));assert.deepEqual(x,s);assert.equal(x.character.miasma,true);assert.equal(x.content.ep1,true)});
+test('encounter entry/exit owns Miasma state explicitly',()=>{let s=enterEloEncounter(make(),{encounterId:'e1',locationId:'wilds',miasma:true});assert.equal(s.character.miasma,true);s=leaveEloEncounter(s);assert.equal(s.character.miasma,false);assert.equal(s.encounter.status,'RESOLVED')});
+test('social authority distinguishes real players from ELO NPCs',()=>{assert.equal(routeEloSocialAuthority({targetKind:'REAL_PLAYER'}),'CYBERPUNK_RED_CHARACTER');assert.equal(routeEloSocialAuthority({targetKind:'ELO_NPC'}),'ELFLINES_CHARACTER')});
+test('AI context is read-only and cannot invent source quests or mutate',()=>{const c=buildEloAdventureContext(make());assert.equal(c.readOnly,true);assert.equal(c.authority.mechanics,'RULES_ENGINE');assert.ok(c.forbidden.includes('mutate_state'));assert.ok(c.forbidden.includes('invent_source_quests'));assert.ok(c.forbidden.includes('decide_player_choices'))});
+test('Razorfire is classified from source as vignette, not fabricated adventure',()=>{assert.equal(ELO_RAZORFIRE_CLASSIFICATION.playableAdventure,false);assert.equal(ELO_RAZORFIRE_CLASSIFICATION.kind,'SOURCE_VIGNETTE');assert.equal(ELO_SOURCE_PACKS.base.features.includes('razorfire_caverns_vignette'),true)});
+test('unknown packs and incompatible save versions fail closed',()=>{assert.throws(()=>enableEloPack(make(),'fake'));assert.throws(()=>loadEloSession({version:99,character:{version:1}}))});
