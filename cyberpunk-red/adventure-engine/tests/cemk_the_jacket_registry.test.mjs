@@ -1,0 +1,8 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {THE_JACKET_BEATS,createTheJacketState,selectTheJacketHook,recordTheJacketPing,recordTheJacketDowntime,theJacketAIContext} from "../runtime/cemk_the_jacket_registry.js";
+test("The Jacket registry has full beat topology",()=>{assert.equal(THE_JACKET_BEATS.length,18);assert.equal(new Set(THE_JACKET_BEATS).size,18);});
+test("crew composition selects deterministic hook",()=>{assert.equal(selectTheJacketHook({}),"no_fixer_no_nomad");assert.equal(selectTheJacketHook({hasFixer:true}),"fixer_no_nomad");assert.equal(selectTheJacketHook({hasNomad:true}),"nomad");});
+test("pings persist and reputation milestones are deterministic",()=>{let s=createTheJacketState();s=recordTheJacketPing(s,"ncart_station");assert.equal(s.reputation,1);s=recordTheJacketPing(s,"megabuilding_h4");s=recordTheJacketPing(s,"abandoned_shanty_town");assert.equal(s.reputation,2);assert.equal(s.completedPings.length,3);});
+test("downtime is constrained to 1-3 days",()=>{let s=createTheJacketState();assert.throws(()=>recordTheJacketDowntime(s,0));assert.throws(()=>recordTheJacketDowntime(s,4));s=recordTheJacketDowntime(s,3);assert.equal(s.downtimeDays,3);});
+test("AI context is read-only authority",()=>{const c=theJacketAIContext(createTheJacketState());assert.equal(c.authority.mutateState,false);assert.equal(c.authority.forceScene,false);assert.equal(c.authority.decideForPlayer,false);assert.equal(c.authority.fabricateRoll,false);assert.equal(c.authority.inventRules,false);assert.equal(c.authority.revealSealedSecrets,false);});
