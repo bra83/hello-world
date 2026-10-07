@@ -1,0 +1,8 @@
+export const CEMK_THE_JACKET_VERSION=1;
+export const THE_JACKET_BEATS=Object.freeze(["hook","first_fight","meeting_falco","toms_diner","downtime","el_coyote_cojo","ncart_station","megabuilding_h4","abandoned_shanty_town","final_ping","nomad_camp","lizzies_bar","black_car","maria_torres","adam_smasher","test_of_worth","into_the_sunset","flatlined"]);
+export const THE_JACKET_PINGS=Object.freeze(["ncart_station","megabuilding_h4","abandoned_shanty_town"]);
+export function createTheJacketState(){return {version:1,current:"hook",completed:[],completedPings:[],reputation:0,downtimeDays:0,history:[]};}
+export function selectTheJacketHook({hasFixer=false,hasNomad=false}={}){return hasNomad?"nomad":hasFixer?"fixer_no_nomad":"no_fixer_no_nomad";}
+export function recordTheJacketPing(state,ping){if(!THE_JACKET_PINGS.includes(ping))throw new Error("UNKNOWN_PING");const p=[...new Set([...state.completedPings,ping])];return {...state,completedPings:p,reputation:p.length===3?2:1,history:[...state.history,{type:"ping",ping}]};}
+export function recordTheJacketDowntime(state,days){if(!Number.isInteger(days)||days<1||days>3)throw new Error("DOWNTIME_DAYS_1_TO_3");return {...state,downtimeDays:state.downtimeDays+days,history:[...state.history,{type:"downtime",days}]};}
+export function theJacketAIContext(state){return Object.freeze({adventure:"CEMK_THE_JACKET",currentBeat:state.current,reputation:state.reputation,completedPings:[...state.completedPings],authority:Object.freeze({mutateState:false,forceScene:false,decideForPlayer:false,fabricateRoll:false,inventRules:false,revealSealedSecrets:false})});}
