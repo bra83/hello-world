@@ -62,7 +62,7 @@ export class CyberpunkRulesAdapter{
 
   normalizeResult(out,type,action,authority){
     const r=out&&typeof out==='object'?out:{ok:false,error:'invalid rule result'};
-    const ok=r.ok!==false&&r.resolved!==false&&!r.blocked;
+    const ok=r.ok!==false&&r.resolved===true&&r.blocked!==true;
     return{
       ...clone(r),
       ok,
@@ -128,12 +128,13 @@ export class CyberpunkLocationResolver{
       atlasId:resolved.atlasId,x:resolved.x,y:resolved.y,district:resolved.district,districtCode:resolved.districtCode,
       poiCode:resolved.poiCode,mode:'street',travelMode:c?.worldPosition?.travelMode||'walk',updatedAt:new Date().toISOString()
     };
-    c.worldPosition=pos;
     try{
-      if(this.bridge?.moveCharacter&&c.characterId){
-        const committed=await this.bridge.moveCharacter(c.characterId,pos);
-        if(committed?.worldPosition)c.worldPosition=committed.worldPosition;
-      }
+      if(typeof this.bridge?.moveCharacter!=='function'||!c.characterId)
+        return{ok:false,resolved:false,reason:'WORLD_POSITION_HOST_UNAVAILABLE',location:resolved};
+      const committed=await this.bridge.moveCharacter(c.characterId,pos);
+      if(committed?.ok===false||committed?.blocked===true||!committed?.worldPosition)
+        return{ok:false,resolved:false,reason:'WORLD_POSITION_COMMIT_REJECTED',location:resolved};
+      c.worldPosition=clone(committed.worldPosition);
       return{ok:true,resolved:true,location:resolved,worldPosition:clone(c.worldPosition)};
     }catch(error){
       return{ok:false,resolved:false,reason:'WORLD_POSITION_COMMIT_FAILED',error:String(error?.message||error),location:resolved};
