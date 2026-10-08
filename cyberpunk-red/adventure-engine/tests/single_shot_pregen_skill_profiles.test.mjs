@@ -10,12 +10,18 @@ test('all ten sheets have 20 source-bound validated skills',()=>{
   assert.ok(p.skills.every(x=>x[1]+x[2]+x[3]===x[4]));
  }
 });
-test('five complete stat rows, five extraction gaps never invented',()=>{
- const complete=SINGLE_SHOT_PREGEN_SKILL_PROFILES.filter(x=>x.stats!==null);
- assert.equal(complete.length,5);
- assert.deepEqual(SINGLE_SHOT_PREGEN_SKILL_PROFILES.filter(x=>x.unresolvedStatExtraction).map(x=>x.id),
-  ['ssp_pregen_06','ssp_pregen_07','ssp_pregen_08','ssp_pregen_09','ssp_pregen_10']);
- assert.ok(complete.every(x=>x.stats.length===10));
+test('ten stat rows visually verified; derived HP, death save and humanity agree',()=>{
+ const complete=SINGLE_SHOT_PREGEN_SKILL_PROFILES.filter(x=>x.statsVerifiedFromPageImage);
+ assert.equal(complete.length,10);
+ assert.ok(complete.every(x=>x.stats.length===10&&!x.unresolvedStatExtraction));
+ for(const p of complete){
+  assert.equal(p.derived[0],10+5*Math.ceil((p.stats[5]+p.stats[8])/2));
+  assert.equal(p.derived[2],p.stats[8]);
+  assert.equal(Math.floor(p.derived[3]/10),p.stats[9]);
+  assert.equal(p.humanityMaximum,p.empathyMaximum*10);
+ }
+ assert.equal(complete[0].stats[9],6);
+ assert.equal(complete[5].stats[0],8);
 });
 test('source references and derived stats remain available',()=>{
  for(let i=0;i<10;i++){
