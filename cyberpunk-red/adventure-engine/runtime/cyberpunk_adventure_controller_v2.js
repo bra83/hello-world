@@ -8,6 +8,15 @@ export class CyberpunkAdventureController extends BaseController {
     this.registry=new AdventureRegistry({validator:new AdventureValidator({knownRuleActions:CYBERPUNK_RULE_ACTIONS})});
   }
 
+  // Production narrator receives public/discovered state only, never sealed GM payload.
+  buildContextObject(c=this.character(),options={}){
+    const ctx=super.buildContextObject(c,options);
+    if(!ctx)return ctx;
+    const safe=JSON.parse(JSON.stringify(ctx));
+    delete safe.gmKnowledge;
+    return safe;
+  }
+
   runtime(c=this.character()){
     const raw=this.persistedState(c);if(!raw?.adventureId||!this.registry.has(raw.adventureId))return null;
     const module=this.registry.get(raw.adventureId),state=migrateAdventureState(raw,module);
