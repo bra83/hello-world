@@ -26,6 +26,37 @@ export class AdventureRegistry extends Core.AdventureRegistry {
 export class AdventureRuntime extends Core.AdventureRuntime {
   constructor(module,options={}){super(module,{...options,validator:options.validator||new AdventureValidator()})}
 
+  async resolveRuleActions(actions,{event=null,context={}}={}){
+    this.requireState();
+    const results=[];
+    for(const action of list(actions)){
+      const actionId=norm(action?.id)||this.nextOperationKey('rule');
+      let row;
+      if(!this.rulesAdapter?.resolve){
+        row={ok:false,resolved:false,blocked:true,reason:'RULES_ADAPTER_UNAVAILABLE'};
+      }else{
+        try{
+          row=await this.rulesAdapter.resolve({...clone(action),id:actionId},
+            {adventureState:clone(this.state),module:this.module,event,context});
+        }catch(_){
+          row={ok:false,resolved:false,blocked:true,reason:'RULES_ADAPTER_ERROR'};
+        }
+      }
+      const accepted=row?.ok===true&&row?.resolved===true&&row?.blocked!==true;
+      if(!accepted)row={...(row&&typeof row==='object'?clone(row):{}),
+        ok:false,resolved:false,blocked:true,
+        reason:row?.reason||'RULES_RESULT_NOT_EXPLICITLY_RESOLVED'};
+      results.push(row);
+      if(accepted)this.state.ruleResults.push({...clone(row),resolvedAt:new Date().toISOString()});
+      else this.state.pendingRuleActions.push({...clone(row),action:{...clone(action),id:actionId},
+        queuedAt:new Date().toISOString()});
+    }
+    this.state.ruleResults=this.state.ruleResults.slice(-100);
+    this.state.pendingRuleActions=this.state.pendingRuleActions.slice(-100);
+    this.persist();
+    return results;
+  }
+
   matchingEvents(event,context={}){
     return this.triggerEngine.matching(this.module,event,this.state,context).filter(ev=>{
       if(list(ev.locationRestrictions).length&&!ev.locationRestrictions.includes(this.state.currentLocationId))return false;
@@ -51,7 +82,7 @@ export class AdventureRuntime extends Core.AdventureRuntime {
       const policy=norm(ev.repeatPolicy||'ONCE').toUpperCase(),already=this.state.triggeredEventIds.includes(ev.id);
       if((policy==='ONCE'||policy==='UNTIL_SUCCESS')&&already)continue;
       const ruleResults=await this.resolveRuleActions(ev.ruleActions,{event:ev,context:{...context,event}});
-      const requiredBlocked=ruleResults.some((r,index)=>list(ev.ruleActions)[index]?.required!==false&&(r?.ok!==true||r?.resolved===false||r?.blocked));
+      const requiredBlocked=ruleResults.some((r,index)=>list(ev.ruleActions)[index]?.required!==false&&(r?.ok!==true||r?.resolved!==true||r?.blocked===true));
       if(requiredBlocked){results.push({eventId:ev.id,repeatPolicy:policy,ruleActions:clone(ev.ruleActions||[]),ruleResults,blockedByRules:true,applied:[],events:[]});this.persist();continue}
       const key=policy==='REPEATABLE'?this.nextOperationKey('event:'+ev.id):'event:'+ev.id;
       const out=this.applyConsequences(ev.consequences,{sourceId:'event:'+ev.id,idempotencyPrefix:key,context:{...context,event,ruleResults}});
