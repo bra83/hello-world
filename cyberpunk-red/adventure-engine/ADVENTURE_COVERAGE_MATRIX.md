@@ -25,7 +25,7 @@ Status: **IMPLEMENTED** = validated deterministic runtime/content path + tests; 
 | Elflines Online | Deterministic ELO rules authority + persistent session/save-load + encounter/Miasma state + social authority routing + read-only AI context. Razorfire Caverns correctly classified as source vignette, not fabricated adventure. | `elflines_rules_engine` suite + 6 integration tests; Adventure Engine suite, syntax/JSON validation and R5.72 patch dry-run PASS on `5b7b8a1fc95ebc45af50e5cd8b98bab5ed307be1` | **IMPLEMENTED** |
 | Elflines Online EP1 | Deterministic registry for ten Night City players + ten ELO PCs; fail-closed d10 lookup; optional Bur/Razorfire seed; discovered-only read-only AI context | Dedicated EP1 registry tests | **IMPLEMENTED** |
 | Single Shot Pack | Deterministic source-bound registry; 6/6 NET Architectures promoted; 10 pregen slots remain unpromoted pending source-bound character data | Dedicated registry/validator tests for NET promotion and AI authority | **PARTIAL** |
-| CEMK — The Jacket | 18-Beat topology; crew-conditioned hook; player-owned nonlinear Ping order; persistent Reputation/Downtime/history; v1→v2 save migration; ending state; fail-closed transition authority; read-only AI context | Dedicated The Jacket runtime tests; local Node gate 7/7 PASS for v2 hardening | **PARTIAL** |
+| CEMK — The Jacket | 18-Beat graph and player-owned Ping order; v1→v2 story save migration; mechanics v1→v2 migration; Rules Engine checks/Downtime; deterministic Falco payout contracts; versioned, validated idempotent economy ledger; read-only AI context. Global wallet/save/World/Atlas bindings remain pending. | The Jacket registry tests; mechanics v2 10/10 local Node tests on checkpoint (2026-10-07); host authority regressions committed, CI execution pending. | **PARTIAL** |
 
 ## Runtime hardening coverage
 R5.72 verifies event location restrictions, repeatable-event operation keys, UNTIL_SUCCESS retries after blocked Rules Engine resolution, engine-gated objective success/failure, idempotent consequences, immediate completion re-evaluation, GM-only unrevealed secrets, save/load separation, deterministic host RNG and AI intent authority boundaries.
@@ -45,3 +45,7 @@ Canonical Drive sources include Hope Reborn v1.1 + Hope Reborn+ DLC, Tales of th
 ## Conversion gate
 A row cannot become IMPLEMENTED merely because a PDF is indexed or legacy JSON exists. Required evidence remains:
 `source authority → deterministic schema/registry → persistent state where applicable → playable triggers/conditions/consequences for actual adventures → save/load → AI context → mechanical dependency resolution → runtime tests`.
+
+
+## R5.72 mechanics v2 / host authority hardening
+The Jacket mechanics v2 introduces a source-bound economic ledger with transaction IDs, amount validation, per-item payout deduplication, and v1 save migration. Only explicit Rules Engine resolution and wallet commit acknowledgment with matching transaction ID and amount may record an economic consequence. Downtime actions also require host commit acknowledgment. The host adapter rejects ambiguous Rules results and does not change world position before an Atlas host acknowledgment. These are component-level safeguards; the native wallet adapter, global save transaction recovery and Android runtime remain PARTIAL. No CI PASS is claimed.
