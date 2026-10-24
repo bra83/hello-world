@@ -24,16 +24,33 @@ export class CyberpunkAdventureController extends BaseController {
     // requireDurableSave is strictly fail-closed: requires explicit durable reader
     const requireDurableSave = options.requireDurableSave ?? Boolean(nativeLoader);
 
+    const defaultWallet = options.wallet || options.bridge?.wallet || (
+      typeof options.bridge?.walletCreditMissionReward === 'function' ? {
+        getTransaction: (req) => options.bridge.walletGetTransaction?.(req),
+        creditMissionReward: (req) => options.bridge.walletCreditMissionReward(req)
+      } : null
+    );
+    const defaultVerifyReward = options.verifyTheJacketRewardEligibility || (
+      typeof options.bridge?.verifyRewardEligibility === 'function'
+        ? (req) => options.bridge.verifyRewardEligibility(req)
+        : null
+    );
+    const defaultVerifyWorldTime = options.verifyTheJacketWorldTimeAdvance || (
+      typeof options.bridge?.verifyWorldTimeAdvance === 'function'
+        ? (req) => options.bridge.verifyWorldTimeAdvance(req)
+        : null
+    );
+
     this.theJacket=createTheJacketCampaignPort({
       getCharacter:()=>this.character(),
-      saveCharacter:c=>this.saveCharacter?.(c),
+      saveCharacter:(c,opts)=>this.saveCharacter?.(c,opts),
       loadSavedCharacter:nativeLoader,
       requireDurableSave,
       rulesAdapter:this.rulesAdapter,
-      wallet:options.wallet||options.bridge?.wallet||null,
+      wallet:defaultWallet,
       accountId:options.walletAccountId||null,
-      verifyRewardEligibility:options.verifyTheJacketRewardEligibility||null,
-      verifyWorldTimeAdvance:options.verifyTheJacketWorldTimeAdvance||null
+      verifyRewardEligibility:defaultVerifyReward,
+      verifyWorldTimeAdvance:defaultVerifyWorldTime
     });
   }
 
@@ -62,13 +79,15 @@ export class CyberpunkAdventureController extends BaseController {
     return new AdventureRuntime(module,{state,persistence:this.persistence(c),mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c),rulesAdapter:this.rulesAdapter,validator:this.registry.validator});
   }
 
-  // Start preserving v2 AdventureEngine instance and strict atomic rollback on Atlas or save failure
+  // Start preserving v2 AdventureEngine instance and strict atomic rollback on Atlas or save failure (including host storage rollback)
   async start(adventureId,{mode=null,locationId=null,sceneId=null,flags={}}={}){
     const c=this.character();if(!c)throw new Error('Personagem/campanha não carregado');
     if(!this.registry.has(adventureId))throw new Error('AdventureModule não registrado: '+adventureId);
     const campaign=this.campaign(c);
     const previousAdventureState = campaign ? clone(campaign.adventureState) : null;
     const previousWorldPosition = clone(c.worldPosition);
+    const previousContinuity = clone(c.continuityLegacy);
+    let hostPositionMoved = false;
 
     let stagedState = null;
     const stagingPersistence = new AdventurePersistence({
@@ -86,36 +105,39 @@ export class CyberpunkAdventureController extends BaseController {
     if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(state.startMode)&&state.currentLocationId){
       const posOut = await this.positionAtModuleLocation(adventureId,state.currentLocationId);
       if(!posOut || posOut.ok !== true || posOut.resolved !== true || posOut.blocked === true){
-        if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
-        else delete c.worldPosition;
+        await this.rollbackPersistedPosition(c, previousWorldPosition);
         throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut?.reason || 'unresolved'));
       }
+      hostPositionMoved = true;
     }
     const targetState = stagedState || clone(state);
     if(campaign) campaign.adventureState = targetState;
+    if(this.continuity) this.continuity.applyLegacyToNextAdventure(c, campaign);
     if(typeof this.saveCharacter === 'function'){
       try{
         const saveRes = await this.saveCharacter(c);
-        if(saveRes && typeof saveRes === 'object' && saveRes.ok === false){
-          if(campaign){
-            if(previousAdventureState != null) campaign.adventureState = previousAdventureState;
-            else delete campaign.adventureState;
-          }
-          if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
-          else delete c.worldPosition;
-          throw new Error('START_SAVE_CHARACTER_FAILED: ' + (saveRes.error || saveRes.reason || 'save rejected'));
+        const saveAccepted = Boolean(saveRes && typeof saveRes === 'object' && saveRes.ok === true && saveRes.blocked !== true);
+        if(!saveAccepted){
+          throw new Error('START_SAVE_CHARACTER_FAILED: ' + (saveRes?.error || saveRes?.reason || 'save rejected or ambiguous receipt'));
         }
       }catch(err){
         if(campaign){
           if(previousAdventureState != null) campaign.adventureState = previousAdventureState;
           else delete campaign.adventureState;
         }
-        if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
-        else delete c.worldPosition;
+        if(previousContinuity != null) c.continuityLegacy = previousContinuity;
+        else delete c.continuityLegacy;
+        if(hostPositionMoved){
+          await this.rollbackPersistedPosition(c, previousWorldPosition);
+        }else if(previousWorldPosition != null){
+          c.worldPosition = previousWorldPosition;
+        }else{
+          delete c.worldPosition;
+        }
         throw err;
       }
     }
-    this.hostEvents.seedClock();
+    this.hostEvents?.seedClock?.();
     return state;
   }
 }

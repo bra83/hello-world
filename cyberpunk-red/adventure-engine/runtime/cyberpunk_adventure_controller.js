@@ -5,17 +5,63 @@ import {
 import {
   CyberpunkRulesAdapter,CyberpunkLocationResolver,AdventureHostEventBridge,CYBERPUNK_RULE_ACTIONS
 } from './cyberpunk_host_adapters.js';
+import * as ElflinesEp1Registry from './elflines_ep1_registry.js';
+import * as ElflinesIntegration from './elflines_integration.js';
+import * as ElflinesRulesEngine from './elflines_rules_engine.js';
+import * as SingleShotPackRegistry from './single_shot_pack_registry.js';
+import * as SingleShotPregenIdentities from './single_shot_pregen_identities.js';
+import * as SingleShotPregenSkillProfiles from './single_shot_pregen_skill_profiles.js';
+import * as SingleShotPregenLoadouts from './single_shot_pregen_loadouts.js';
+import * as SingleShotPregenPreview from './single_shot_pregen_preview.js';
+import {
+  SINGLE_SHOT_PDF_VERIFIED_SPECS,SINGLE_SHOT_NET_ARCHITECTURES,
+  promoteSingleShotPlayableCharacter,promoteAllSingleShotPlayableCharacters,getSingleShotNetArchitecture
+} from './single_shot_pregen_factory.js';
+import {
+  BRASEIRO_ADVENTURE_FORMAT,BRASEIRO_LEGACY_FORMAT,
+  validateBraseiroAdventurePayload,buildAdventureModuleFromImport,
+  buildUntrustedAdventurePromptEnvelope,BraseiroContinuityManager
+} from './braseiro_adventure_import_v1.js';
 
 const clone=v=>v==null?v:JSON.parse(JSON.stringify(v));
 
 export class CyberpunkAdventureController{
-  constructor({getCharacter,saveCharacter,atlas=null,bridge=null,toast=()=>{}}={}){
-    this.getCharacter=getCharacter;this.saveCharacter=saveCharacter;this.atlas=atlas;this.bridge=bridge;this.toast=toast;
+  constructor({getCharacter,saveCharacter,setCharacter=null,atlas=null,bridge=null,toast=()=>{}}={}){
+    this.getCharacter=getCharacter;this.saveCharacter=saveCharacter;this.setCharacter=setCharacter;
+    this.atlas=atlas;this.bridge=bridge;this.toast=toast;
     this.rulesAdapter=new CyberpunkRulesAdapter({bridge,getCharacter:()=>this.character()});
     this.locationResolver=new CyberpunkLocationResolver({atlas,bridge,getCharacter:()=>this.character()});
     this.registry=new AdventureRegistry({validator:new AdventureValidator({knownRuleActions:CYBERPUNK_RULE_ACTIONS})});
     this.hostEvents=new AdventureHostEventBridge({controller:this,getCharacter:()=>this.character()});
-    this.ready=false;this.lastError=null;this.lastValidation=[];this.lastLocationResolution=null;
+    this.continuity=new BraseiroContinuityManager();
+    this.importedSealedSecrets=new Map();
+    this.extensions={
+      elflines:{
+        registry:ElflinesEp1Registry,
+        integration:ElflinesIntegration,
+        rules:ElflinesRulesEngine
+      },
+      singleShot:{
+        registry:SingleShotPackRegistry,
+        identities:SingleShotPregenIdentities,
+        skillProfiles:SingleShotPregenSkillProfiles,
+        loadouts:SingleShotPregenLoadouts,
+        preview:SingleShotPregenPreview,
+        verifiedSpecs:SINGLE_SHOT_PDF_VERIFIED_SPECS,
+        netArchitectures:SINGLE_SHOT_NET_ARCHITECTURES,
+        promotePlayable:promoteSingleShotPlayableCharacter,
+        promoteAllPlayable:promoteAllSingleShotPlayableCharacters,
+        getNetArchitecture:getSingleShotNetArchitecture
+      },
+      adventureImporter:{
+        format:BRASEIRO_ADVENTURE_FORMAT,
+        legacyFormat:BRASEIRO_LEGACY_FORMAT,
+        validate:validateBraseiroAdventurePayload,
+        buildModule:buildAdventureModuleFromImport,
+        buildPromptEnvelope:buildUntrustedAdventurePromptEnvelope
+      }
+    };
+    this.ready=false;this.lastError=null;this.lastValidation=[];this.lastLocationResolution=null;this.lastPositionRollback=null;
   }
 
   async init(){
@@ -90,12 +136,39 @@ export class CyberpunkAdventureController{
     return out;
   }
 
+  async rollbackPersistedPosition(c,previousWorldPosition){
+    if(previousWorldPosition != null) c.worldPosition = clone(previousWorldPosition);
+    else if(c) delete c.worldPosition;
+    if(c?.characterId && previousWorldPosition && typeof this.bridge?.moveCharacter === 'function'){
+      try{
+        const rb = await this.bridge.moveCharacter(c.characterId, clone(previousWorldPosition));
+        this.lastPositionRollback = {
+          at: new Date().toISOString(),
+          characterId: c.characterId,
+          restoredPosition: clone(previousWorldPosition),
+          hostReceipt: clone(rb)
+        };
+        return rb;
+      }catch(rbErr){
+        this.lastPositionRollback = {
+          at: new Date().toISOString(),
+          characterId: c.characterId,
+          error: String(rbErr?.message || rbErr)
+        };
+        return null;
+      }
+    }
+    return null;
+  }
+
   async start(adventureId,{mode=null,locationId=null,sceneId=null,flags={}}={}){
     const c=this.character();if(!c)throw new Error('Personagem/campanha não carregado');
     if(!this.registry.has(adventureId))throw new Error('AdventureModule não registrado: '+adventureId);
     const campaign=this.campaign(c);
     const previousAdventureState = campaign ? clone(campaign.adventureState) : null;
     const previousWorldPosition = clone(c.worldPosition);
+    const previousContinuity = clone(c.continuityLegacy);
+    let hostPositionMoved = false;
 
     let stagedState = null;
     const stagingPersistence = new AdventurePersistence({
@@ -113,32 +186,35 @@ export class CyberpunkAdventureController{
     if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(state.startMode)&&state.currentLocationId){
       const posOut = await this.positionAtModuleLocation(adventureId,state.currentLocationId);
       if(!posOut || posOut.ok !== true || posOut.resolved !== true || posOut.blocked === true){
-        if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
-        else delete c.worldPosition;
+        await this.rollbackPersistedPosition(c, previousWorldPosition);
         throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut?.reason || 'unresolved'));
       }
+      hostPositionMoved = true;
     }
     const targetState = stagedState || clone(state);
     if(campaign) campaign.adventureState = targetState;
+    this.continuity.applyLegacyToNextAdventure(c, campaign);
     if(typeof this.saveCharacter === 'function'){
       try{
         const saveRes = await this.saveCharacter(c);
-        if(saveRes && typeof saveRes === 'object' && saveRes.ok === false){
-          if(campaign){
-            if(previousAdventureState != null) campaign.adventureState = previousAdventureState;
-            else delete campaign.adventureState;
-          }
-          if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
-          else delete c.worldPosition;
-          throw new Error('START_SAVE_CHARACTER_FAILED: ' + (saveRes.error || saveRes.reason || 'save rejected'));
+        const saveAccepted = Boolean(saveRes && typeof saveRes === 'object' && saveRes.ok === true && saveRes.blocked !== true);
+        if(!saveAccepted){
+          throw new Error('START_SAVE_CHARACTER_FAILED: ' + (saveRes?.error || saveRes?.reason || 'save rejected or ambiguous receipt'));
         }
       }catch(err){
         if(campaign){
           if(previousAdventureState != null) campaign.adventureState = previousAdventureState;
           else delete campaign.adventureState;
         }
-        if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
-        else delete c.worldPosition;
+        if(previousContinuity != null) c.continuityLegacy = previousContinuity;
+        else delete c.continuityLegacy;
+        if(hostPositionMoved){
+          await this.rollbackPersistedPosition(c, previousWorldPosition);
+        }else if(previousWorldPosition != null){
+          c.worldPosition = previousWorldPosition;
+        }else{
+          delete c.worldPosition;
+        }
         throw err;
       }
     }
@@ -158,6 +234,127 @@ export class CyberpunkAdventureController{
     await this.saveCharacter?.(c);
   }
 
+  // Single Shot Pack v1.1 playable characters & NET Architectures
+  listSingleShotPregens(){
+    return promoteAllSingleShotPlayableCharacters();
+  }
+
+  async loadSingleShotPregen(pregenId,options={}){
+    const promoted = promoteSingleShotPlayableCharacter(pregenId, options);
+    if(typeof this.setCharacter === 'function'){
+      this.setCharacter(promoted);
+    }
+    if(typeof this.saveCharacter === 'function'){
+      const saveRes = await this.saveCharacter(promoted);
+      if(!saveRes || saveRes.ok !== true || saveRes.blocked === true){
+        throw new Error('SINGLE_SHOT_SAVE_FAILED: ' + (saveRes?.error || saveRes?.reason || 'save rejected'));
+      }
+    }
+    return promoted;
+  }
+
+  getSingleShotNetArchitecture(archId){
+    return getSingleShotNetArchitecture(archId);
+  }
+
+  // Elflines Online Expansion Pack 1 runtime actions
+  async initElflinesForCharacter({avatarName='Aeris',elflineId='shadowgrove',gp=200}={}){
+    const c=this.character();if(!c)throw new Error('No active character');
+    const eloChar=ElflinesRulesEngine.createEloState({
+      elfName:avatarName,
+      stats:{INT:6,REF:6,DEX:6,TECH:5,COOL:5,WILL:6,MOVE:6,BODY:5,EMP:5},
+      skills:{'Language (Elven)':4,'Archery':4,'Melee Weapon':4,'Perception':2,'Stealth':2},
+      gp,
+      elflineId
+    });
+    let session=ElflinesIntegration.createEloSession({
+      sessionId:'elo_'+Date.now(),
+      playerCharacterId:c.characterId||c.id||'pc',
+      eloCharacter:eloChar
+    });
+    session=ElflinesIntegration.enableEloPack(session,'ep1');
+    c.elflinesOnline=session;
+    if(typeof this.saveCharacter==='function'){
+      const saveRes=await this.saveCharacter(c);
+      if(!saveRes||saveRes.ok!==true)throw new Error('ELFLINES_SAVE_FAILED');
+    }
+    return c.elflinesOnline;
+  }
+
+  async completeElflinesDungeonRun({ebConvertedToGp=1,rankUpStat='REF'}={}){
+    const c=this.character();if(!c?.elflinesOnline)throw new Error('Elflines session not initialized');
+    let state=ElflinesRulesEngine.buyGp(c.elflinesOnline.character,ebConvertedToGp);
+    if(rankUpStat){
+      state=ElflinesRulesEngine.rankUp(state,{type:'STAT',stat:rankUpStat});
+    }
+    c.elflinesOnline.character=state;
+    if(typeof this.saveCharacter==='function'){
+      const saveRes=await this.saveCharacter(c);
+      if(!saveRes||saveRes.ok!==true)throw new Error('ELFLINES_SAVE_FAILED');
+    }
+    return c.elflinesOnline;
+  }
+
+  // Braseiro Adventure JSON Importer (braseiro.adventure/v1) & Cross-Adventure Continuity (braseiro.legacy/v1)
+  async importAdventureJson(rawPayload,{autoStart=false,mode=StartMode.OFFICIAL_ADVENTURE}={}){
+    const {module,sealedSecrets}=buildAdventureModuleFromImport(rawPayload);
+    if(Array.isArray(this.atlas?.poiCatalog)){
+      for(const loc of module.locations||[]){
+        const exists=this.atlas.poiCatalog.some(p=>p.code===loc.id||p.id===loc.id);
+        if(!exists){
+          this.atlas.poiCatalog.push({
+            code:loc.id,
+            id:loc.id,
+            name:loc.name||loc.id,
+            atlasId:loc.atlasPosition?.atlasId||'night-city-2045',
+            district:loc.district||'Night City',
+            position:{x:Number(loc.atlasPosition?.x??120),y:Number(loc.atlasPosition?.y??140)}
+          });
+        }
+      }
+    }
+    this.registry.register(module);
+    this.importedSealedSecrets.set(module.id,sealedSecrets);
+    const c=this.character();
+    if(c){
+      const campaign=this.campaign(c);
+      campaign.importedAdventures=campaign.importedAdventures||{};
+      campaign.importedAdventures[module.id]=clone(module);
+      if(typeof this.saveCharacter==='function'){
+        const saveRes=await this.saveCharacter(c);
+        if(!saveRes||saveRes.ok!==true||saveRes.blocked===true){
+          throw new Error('IMPORT_ADVENTURE_SAVE_FAILED');
+        }
+      }
+    }
+    let startedState=null;
+    if(autoStart&&c){
+      startedState=await this.start(module.id,{mode,locationId:module.startDefinition?.startingLocation});
+    }
+    return {ok:true,moduleId:module.id,adventureId:module.id,title:module.title,module:clone(module),startedState};
+  }
+
+  async completeActiveAdventureWithLegacy(outcome={}){
+    return this.completeActiveAdventure(outcome);
+  }
+
+  async completeActiveAdventure(outcome={}){
+    const c=this.character();if(!c)throw new Error('No active character');
+    const campaign=this.campaign(c);
+    const legacy=this.continuity.recordAdventureOutcome(c,campaign,outcome);
+    if(campaign?.adventureState){
+      campaign.adventureState.status='COMPLETED';
+      campaign.adventureState.completedAt=new Date().toISOString();
+    }
+    if(typeof this.saveCharacter==='function'){
+      const saveRes=await this.saveCharacter(c);
+      if(!saveRes||saveRes.ok!==true||saveRes.blocked===true){
+        throw new Error('COMPLETE_ADVENTURE_SAVE_FAILED');
+      }
+    }
+    return legacy;
+  }
+
   async syncLocation(locationId=null,sceneId=null,reason='world-sync'){
     const c=this.character(),rt=this.runtime(c);if(!rt)return null;
     const resolved=locationId||c?.worldPosition?.poiCode||c?.worldPosition?.locationId||c?.worldPosition?.district||null;
@@ -174,11 +371,19 @@ export class CyberpunkAdventureController{
     const systems=c?.campaignState?.worldSystems||{};
     const worldState={position:clone(c?.worldPosition||null),clock:clone(c?.campaignState?.worldClock||null),weather:clone(systems.weather||null)};
     const presentNpcIds=(this.atlas?.currentNpcs||[]).map(n=>String(n.enemyId||n.sourceActorId||n.actorId||n.tokenId||n.name||'')).filter(Boolean);
-    return rt.buildAiContext({worldState,mechanicalResults,narrativeProfile,presentNpcIds});
+    const ctx=rt.buildAiContext({worldState,mechanicalResults,narrativeProfile,presentNpcIds});
+    if(ctx&&rt.module?.format===BRASEIRO_ADVENTURE_FORMAT){
+      const activeScene=(rt.module.scenes||[]).find(s=>s.id===rt.state?.currentSceneId)||rt.module.scenes?.[0]||null;
+      ctx.importedAdventureEnvelope=buildUntrustedAdventurePromptEnvelope(rt.module,activeScene,c?.continuityLegacy||null);
+    }
+    return ctx;
   }
 
   buildContextText(c=this.character(),opts={}){
-    const rt=this.runtime(c),ctx=this.buildContextObject(c,opts);return rt&&ctx?rt.contextBuilder.toPromptFragment(ctx):'';
+    const rt=this.runtime(c),ctx=this.buildContextObject(c,opts);
+    if(!rt||!ctx)return'';
+    const base=rt.contextBuilder.toPromptFragment(ctx);
+    return ctx.importedAdventureEnvelope?base+'\n\n'+ctx.importedAdventureEnvelope:base;
   }
 
   async processHostResult({result={},playerAction='',ruleResult=null,mode='PLAYER_ACTION'}={}){
@@ -234,6 +439,8 @@ export class CyberpunkAdventureController{
       pendingRuleActions:state?.pendingRuleActions?.length||0,
       ruleResults:state?.ruleResults?.length||0,
       lastLocationResolution:clone(this.lastLocationResolution),
+      lastPositionRollback:clone(this.lastPositionRollback),
+      extensionsLoaded:Object.keys(this.extensions||{}),
       lastError:this.lastError?String(this.lastError.message||this.lastError):null
     };
   }

@@ -21,7 +21,9 @@ if not sheets.is_file(): raise SystemExit(f'missing required file: {sheets}')
 s=sheets.read_text(encoding='utf-8')
 old="import {CyberpunkAdventureController} from './cyberpunk_adventure_controller.js';"
 new="import {CyberpunkAdventureController} from './cyberpunk_adventure_controller_v2.js';"
-if new not in s:
+if new in s and old in s:
+    s=s.replace(old + '\n', '').replace(old, '')
+elif new not in s:
     if old not in s: raise SystemExit('R572_HARDENING_CONTROLLER_IMPORT_NOT_FOUND')
     s=s.replace(old,new,1)
 sheets.write_text(s,encoding='utf-8')

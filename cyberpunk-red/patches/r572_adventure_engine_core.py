@@ -56,6 +56,8 @@ required_runtime_extensions = (
     "single_shot_pregen_skill_profiles.js",
     "single_shot_pregen_loadouts.js",
     "single_shot_pregen_preview.js",
+    "single_shot_pregen_factory.js",
+    "braseiro_adventure_import_v1.js",
 )
 for ext in required_runtime_extensions:
     ext_src = runtime_src / ext
@@ -72,7 +74,7 @@ for p in data_dest.glob("*.json"):
 s = sheets.read_text(encoding="utf-8")
 
 import_line = "import {CyberpunkAdventureController} from './cyberpunk_adventure_controller.js';"
-if import_line not in s:
+if "from './cyberpunk_adventure_controller" not in s:
     anchor = "import {ensureLivingWorldV3State,livingWorldMasterContext,livingWorldPlayerBrief,consumeLivingWorldMasterEvents} from '../adapter/cpred_living_world_v3.js';"
     if anchor not in s:
         raise SystemExit("R572_SHEETS_IMPORT_ANCHOR_NOT_FOUND")
@@ -243,7 +245,7 @@ gradle.write_text(s, encoding="utf-8")
 
 patched = sheets.read_text(encoding="utf-8")
 checks = [
-    import_line,
+    "from './cyberpunk_adventure_controller",
     "this.adventureController=new CyberpunkAdventureController",
     "await this.adventureController.init();",
     "buildContextText(c)",

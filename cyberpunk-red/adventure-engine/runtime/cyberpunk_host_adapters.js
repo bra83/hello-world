@@ -11,7 +11,13 @@ export const CYBERPUNK_RULE_ACTIONS=Object.freeze([
   'SKILL_CHECK','OPPOSED_CHECK','COMBAT_START','COMBAT_RESOLUTION','DAMAGE','REST','TRAVEL',
   'CHASE','NETRUN','NET_ARCHITECTURE','HUMANITY_CHECK','ADDICTION_CHECK','ROLE_ABILITY',
   'PURCHASE','SALE','CYBERWARE_INSTALL','CYBERWARE_REMOVE','REPAIR','CRAFT','MEDICAL',
-  'WORLD_TIME_ADVANCE','ITEM_USE'
+  'WORLD_TIME_ADVANCE','ITEM_USE',
+  'COMBAT_OR_SOCIAL','ROLLER_DERBY','COMBAT','HEIST_SEQUENCE','ESCAPE_SEQUENCE','CARGO_PROTECTION',
+  'SOCIAL_OR_COMBAT_RESOLUTION','COMBAT_SEQUENCE','BAR_BRAWL_OPPOSED_CHECK','TIMED_CHAOS_SEQUENCE',
+  'SOCIAL_CON_SEQUENCE','INTERFACE_CHECKS','COMBAT_IF_TRIGGERED','TACTICAL_COMBAT_SEQUENCE',
+  'SOCIAL_SURRENDER_OPTIONS','CLIMAX_COMBAT','DICE_ROLL','CYBERTECH_CHECK','DISARM',
+  'ATHLETICS_CHECK','SKILL_CHECKS','DEDUCTION_OR_EDUCATION_CHECK','SECURITY_NET_AND_COMBAT',
+  'PARAMEDIC_OR_MEDICAL_TECH_CHECK'
 ]);
 
 export class CyberpunkRulesAdapter{
@@ -138,8 +144,14 @@ export class CyberpunkLocationResolver{
       if(this.getCharacter?.()!==c)
         return{ok:false,resolved:false,blocked:true,reason:'ACTIVE_CHARACTER_CHANGED',location:resolved};
       const acknowledged=committed.worldPosition;
-      if(Number(acknowledged.x)!==resolved.x||Number(acknowledged.y)!==resolved.y||
-         (acknowledged.atlasId&&acknowledged.atlasId!==resolved.atlasId))
+      const ackX=Number(acknowledged.x),ackY=Number(acknowledged.y);
+      const isNormalized=resolved.x>=0&&resolved.x<=1&&resolved.y>=0&&resolved.y<=1;
+      const tol=isNormalized?0.05:1e-4;
+      const coordMismatch=!Number.isFinite(ackX)||!Number.isFinite(ackY)||Math.abs(ackX-resolved.x)>tol||Math.abs(ackY-resolved.y)>tol;
+      if(coordMismatch||
+         (acknowledged.atlasId&&acknowledged.atlasId!==resolved.atlasId)||
+         (acknowledged.poiCode&&resolved.poiCode&&acknowledged.poiCode!==resolved.poiCode)||
+         (committed.characterId&&committed.characterId!==c.characterId))
         return{ok:false,resolved:false,blocked:true,reason:'WORLD_POSITION_RECEIPT_MISMATCH',location:resolved};
       c.worldPosition=clone(acknowledged);
       return{ok:true,resolved:true,location:resolved,worldPosition:clone(c.worldPosition)};
