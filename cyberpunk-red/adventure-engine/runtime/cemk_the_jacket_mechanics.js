@@ -4,7 +4,8 @@ const plain = value => value !== null && typeof value === 'object' && !Array.isA
 const positiveInt = value => Number.isSafeInteger(value) && value > 0;
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value);
 const blocked = reason => ({ok:false,resolved:false,blocked:true,reason});
-const accepted = result => result?.ok !== false && result?.resolved === true && result?.blocked !== true;
+const rejected = (result,reason) => result?.ok===false && result?.blocked===true ? {ok:false,resolved:false,blocked:true,reason:result.reason||reason} : blocked(reason);
+const accepted = result => result?.ok === true && result?.resolved === true && result?.blocked !== true && !['ai','narrator','llm','gemini'].includes(String(result?.authority||'').toLowerCase());
 export const THE_JACKET_MECHANICS_VERSION = 2;
 export const THE_JACKET_RULE_CONTRACTS = Object.freeze({
   falco_human_perception:{type:'SKILL_CHECK',skill:'Human Perception',dv:9},
@@ -34,13 +35,17 @@ export function validateTheJacketMechanicsState(state){
   if(!plain(state)||state.version!==2||!Array.isArray(state.resolvedRules)||
      !Array.isArray(state.history)||!plain(state.downtimeActions)||!Array.isArray(state.economicLedger))
     throw new Error('INVALID_THE_JACKET_MECHANICS_STATE');
+  const untrustedAuthority=value=>['ai','narrator','llm','gemini'].includes(String(value||'').trim().toLowerCase());
+  if(state.resolvedRules.some(entry=>!plain(entry)||untrustedAuthority(entry.result?.authority))||
+     state.history.some(entry=>!plain(entry)||untrustedAuthority(entry.authority)))
+    throw new Error('UNTRUSTED_MECHANICS_HISTORY');
   for(const [key,action] of Object.entries(state.downtimeActions)){
     if(!validId(key)||!THE_JACKET_DOWNTIME_ACTIONS.includes(action))throw new Error('INVALID_DOWNTIME_ENTRY');
   }
   const ids=new Set(),paidItems=new Set(),singles=new Set();
   for(const entry of state.economicLedger){
     if(!plain(entry)||!validId(entry.transactionId)||!ECONOMY_OPERATIONS.includes(entry.operation)||
-       !positiveInt(entry.amount)||!validId(entry.authority)||!Array.isArray(entry.itemIds)||
+       !positiveInt(entry.amount)||!validId(entry.authority)||untrustedAuthority(entry.authority)||!Array.isArray(entry.itemIds)||
        entry.itemIds.some(id=>!validId(id))||new Set(entry.itemIds).size!==entry.itemIds.length)
       throw new Error('INVALID_ECONOMIC_LEDGER');
     if(!positiveInt(entry.crewSize)||entry.crewSize>30||
@@ -84,7 +89,7 @@ export async function resolveTheJacketRule(adventureState,mechanicsState,contrac
   let result;
   try{result=await rulesAdapter.resolve(clone(contract),{adventureState:clone(adventureState),context:{...clone(context),adventure:'CEMK_THE_JACKET',contractId}});}
   catch(error){return {mechanicsState:clone(mechanicsState),result:blocked('RULES_ADAPTER_ERROR')};}
-  if(!accepted(result))return {mechanicsState:clone(mechanicsState),result:result||blocked('RULES_RESULT_MISSING')};
+  if(!accepted(result))return {mechanicsState:clone(mechanicsState),result:rejected(result,'RULES_RESULT_NOT_AUTHORITATIVE')};
   const next=clone(mechanicsState);
   next.resolvedRules.push({contractId,result:clone(result)});
   next.history.push({type:'rule_resolved',contractId,authority:result.authority||'rules_engine'});
@@ -98,7 +103,7 @@ export async function resolveTheJacketDowntimeAction(adventureState,mechanicsSta
   let result;
   try{result=await rulesAdapter.resolve(rule,{adventureState:clone(adventureState),context:{...clone(context),adventure:'CEMK_THE_JACKET',characterId,day}});}
   catch(error){return {mechanicsState:clone(mechanicsState),result:blocked('RULES_ADAPTER_ERROR')};}
-  if(!accepted(result)||result.committed!==true)return {mechanicsState:clone(mechanicsState),result:result||blocked('RULES_RESULT_MISSING')};
+  if(!accepted(result)||result.committed!==true)return {mechanicsState:clone(mechanicsState),result:rejected(result,'DOWNTIME_COMMIT_NOT_AUTHORITATIVE')};
   const next=recordDowntimeAction(mechanicsState,{characterId,day,action});
   next.history.push({type:'downtime_rule_committed',characterId,day,action,authority:result.authority||'rules_engine'});
   return {mechanicsState:next,result};
@@ -137,7 +142,7 @@ export async function resolveTheJacketEconomy(adventureState,mechanicsState,requ
   try{result=await rulesAdapter.resolve(rule,{adventureState:clone(adventureState),context:{adventure:'CEMK_THE_JACKET',transactionId}});}
   catch(error){return {mechanicsState:clone(mechanicsState),result:blocked('RULES_ADAPTER_ERROR')};}
   if(!accepted(result)||result.committed!==true||result.transactionId!==transactionId||result.amount!==plan.amount)
-    return {mechanicsState:clone(mechanicsState),result:result||blocked('ECONOMIC_COMMIT_NOT_ACKNOWLEDGED')};
+    return {mechanicsState:clone(mechanicsState),result:rejected(result,'ECONOMIC_COMMIT_NOT_ACKNOWLEDGED')};
   const next=clone(mechanicsState);
   next.economicLedger.push({transactionId,operation,crewSize,itemIds:[...itemIds],amount:plan.amount,
     authority:validId(result.authority)?result.authority:'rules_engine'});

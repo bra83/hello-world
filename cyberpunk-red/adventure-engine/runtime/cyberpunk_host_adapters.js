@@ -62,7 +62,8 @@ export class CyberpunkRulesAdapter{
 
   normalizeResult(out,type,action,authority){
     const r=out&&typeof out==='object'?out:{ok:false,error:'invalid rule result'};
-    const ok=r.ok===true&&r.resolved===true&&r.blocked!==true;
+    const untrusted=['ai','narrator','llm','gemini'].includes(norm(r.authority).toLowerCase());
+    const ok=r.ok===true&&r.resolved===true&&r.blocked!==true&&!untrusted;
     return{
       ...clone(r),
       ok,
@@ -132,9 +133,15 @@ export class CyberpunkLocationResolver{
       if(typeof this.bridge?.moveCharacter!=='function'||!c.characterId)
         return{ok:false,resolved:false,reason:'WORLD_POSITION_HOST_UNAVAILABLE',location:resolved};
       const committed=await this.bridge.moveCharacter(c.characterId,pos);
-      if(committed?.ok===false||committed?.blocked===true||!committed?.worldPosition)
+      if(committed?.ok!==true||committed?.resolved!==true||committed?.blocked===true||!committed?.worldPosition)
         return{ok:false,resolved:false,reason:'WORLD_POSITION_COMMIT_REJECTED',location:resolved};
-      c.worldPosition=clone(committed.worldPosition);
+      if(this.getCharacter?.()!==c)
+        return{ok:false,resolved:false,blocked:true,reason:'ACTIVE_CHARACTER_CHANGED',location:resolved};
+      const acknowledged=committed.worldPosition;
+      if(Number(acknowledged.x)!==resolved.x||Number(acknowledged.y)!==resolved.y||
+         (acknowledged.atlasId&&acknowledged.atlasId!==resolved.atlasId))
+        return{ok:false,resolved:false,blocked:true,reason:'WORLD_POSITION_RECEIPT_MISMATCH',location:resolved};
+      c.worldPosition=clone(acknowledged);
       return{ok:true,resolved:true,location:resolved,worldPosition:clone(c.worldPosition)};
     }catch(error){
       return{ok:false,resolved:false,reason:'WORLD_POSITION_COMMIT_FAILED',error:String(error?.message||error),location:resolved};

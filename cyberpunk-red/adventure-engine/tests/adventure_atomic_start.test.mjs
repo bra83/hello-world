@@ -1,0 +1,78 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {CyberpunkAdventureController} from '../runtime/cyberpunk_adventure_controller_v2.js';
+
+const moduleData = JSON.parse(fs.readFileSync(new URL('../modules/red_chrome_cargo.json', import.meta.url), 'utf-8'));
+
+test('start() is atomic: atlas failure prevents mutation of campaignState.adventureState', async () => {
+  let char = {
+    characterId: 'pc1',
+    worldPosition: {atlasId: 'night-city-2045', x: 10, y: 10, poiCode: 'old_loc'},
+    campaignState: {
+      session: {campaignId: 'camp1'},
+      adventureState: {adventureId: 'old_adventure', startMode: 'OFFICIAL_ADVENTURE'}
+    }
+  };
+  let saved = false;
+  const mockBridge = {
+    moveCharacter: async () => ({ok: false, resolved: false, blocked: true})
+  };
+  const mockAtlas = {
+    poiCatalog: [{code: 'red_chrome_cargo_start', position: {x: 50, y: 60}, atlasId: 'night-city-2045'}]
+  };
+  const ctrl = new CyberpunkAdventureController({
+    getCharacter: () => char,
+    saveCharacter: async (c) => { saved = true; },
+    atlas: mockAtlas,
+    bridge: mockBridge
+  });
+  ctrl.registry.register(moduleData);
+
+  await assert.rejects(
+    async () => {
+      await ctrl.start('red_chrome_cargo', {mode: 'OFFICIAL_ADVENTURE', locationId: 'red_chrome_cargo_start'});
+    },
+    /START_LOCATION_POSITION_FAILED/
+  );
+
+  // Assert memory state was NOT mutated and save was NOT called
+  assert.equal(char.campaignState.adventureState.adventureId, 'old_adventure');
+  assert.equal(saved, false);
+});
+
+test('start() is atomic: null or ambiguous atlas response is rejected and prevents mutation', async () => {
+  let char = {
+    characterId: 'pc1',
+    worldPosition: {atlasId: 'night-city-2045', x: 10, y: 10, poiCode: 'old_loc'},
+    campaignState: {
+      session: {campaignId: 'camp1'},
+      adventureState: {adventureId: 'old_adventure', startMode: 'OFFICIAL_ADVENTURE'}
+    }
+  };
+  let saved = false;
+  const mockBridge = {
+    moveCharacter: async () => null
+  };
+  const mockAtlas = {
+    poiCatalog: [{code: 'red_chrome_cargo_start', position: {x: 50, y: 60}, atlasId: 'night-city-2045'}]
+  };
+  const ctrl = new CyberpunkAdventureController({
+    getCharacter: () => char,
+    saveCharacter: async (c) => { saved = true; },
+    atlas: mockAtlas,
+    bridge: mockBridge
+  });
+  ctrl.registry.register(moduleData);
+
+  await assert.rejects(
+    async () => {
+      await ctrl.start('red_chrome_cargo', {mode: 'OFFICIAL_ADVENTURE', locationId: 'red_chrome_cargo_start'});
+    },
+    /START_LOCATION_POSITION_FAILED/
+  );
+
+  assert.equal(char.campaignState.adventureState.adventureId, 'old_adventure');
+  assert.equal(saved, false);
+});

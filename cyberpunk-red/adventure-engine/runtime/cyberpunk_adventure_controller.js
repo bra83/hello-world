@@ -93,19 +93,27 @@ export class CyberpunkAdventureController{
   async start(adventureId,{mode=null,locationId=null,sceneId=null,flags={}}={}){
     const c=this.character();if(!c)throw new Error('Personagem/campanha não carregado');
     if(!this.registry.has(adventureId))throw new Error('AdventureModule não registrado: '+adventureId);
+    let stagedState = null;
+    const stagingPersistence = new AdventurePersistence({
+      readState: () => this.persistedState(c),
+      writeState: state => { stagedState = clone(state); }
+    });
     const engine=new AdventureEngine({
       registry:this.registry,mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c),rulesAdapter:this.rulesAdapter,
-      persistenceFactory:()=>this.persistence(c)
+      persistenceFactory:()=>stagingPersistence
     });
     const campaignId=c.campaignState?.session?.campaignId||c.campaignState?.campaignId||null;
     const state=await engine.start(adventureId,{mode,campaignId,locationId,sceneId,flags,worldSnapshot:this.worldSnapshot(c)});
-    c.campaignState.adventureState=state;
     const resolvedMode=state.startMode;
     if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(resolvedMode)&&state.currentLocationId){
       const posOut = await this.positionAtModuleLocation(adventureId,state.currentLocationId);
-      if(posOut && posOut.ok === false){
-        throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut.reason || 'unresolved'));
+      if(!posOut || posOut.ok !== true || posOut.resolved !== true || posOut.blocked === true){
+        throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut?.reason || 'unresolved'));
       }
+    }
+    const campaign=this.campaign(c);
+    if(campaign){
+      campaign.adventureState = stagedState || clone(state);
     }
     await this.saveCharacter?.(c);
     this.hostEvents.seedClock();

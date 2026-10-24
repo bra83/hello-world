@@ -1,7 +1,7 @@
 name: Cyberpunk RED Adventure Engine
 on:
   push:
-    branches: [cyberpunk-red-adventure-engine-r572]
+    branches: [cyberpunk-red-adventure-engine-r572, cyberpunk-red-r572-integrated]
 permissions:
   contents: read
 jobs:

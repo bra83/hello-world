@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CyberpunkRulesAdapter,CyberpunkLocationResolver} from '../runtime/cyberpunk_host_adapters.js';
 test('empty and ambiguous Rules host results are blocked',()=>{
@@ -29,6 +29,7 @@ test('Atlas host unavailable cannot mutate worldPosition',async()=>{
 });
 test('Atlas confirmed position commits after host acknowledgment',async()=>{
  const c={characterId:'pc1',worldPosition:{atlasId:'old',x:1,y:2}},atlas={poiCatalog:[{code:'test-poi',position:{x:99,y:88}}]};
- const resolver=new CyberpunkLocationResolver({atlas,bridge:{moveCharacter:async(id,pos)=>({worldPosition:pos})},getCharacter:()=>c});
+ const resolver=new CyberpunkLocationResolver({atlas,bridge:{moveCharacter:async(id,pos)=>({ok:true,resolved:true,worldPosition:{...pos,x:99,y:88,atlasId:'night-city-2045'}})},getCharacter:()=>c});
  assert.equal((await resolver.position('test-poi')).resolved,true);assert.equal(c.worldPosition.x,99);
 });
+
