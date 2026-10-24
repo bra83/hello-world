@@ -93,43 +93,52 @@ export class CyberpunkAdventureController{
   async start(adventureId,{mode=null,locationId=null,sceneId=null,flags={}}={}){
     const c=this.character();if(!c)throw new Error('Personagem/campanha não carregado');
     if(!this.registry.has(adventureId))throw new Error('AdventureModule não registrado: '+adventureId);
+    const campaign=this.campaign(c);
+    const previousAdventureState = campaign ? clone(campaign.adventureState) : null;
+    const previousWorldPosition = clone(c.worldPosition);
+
     let stagedState = null;
     const stagingPersistence = new AdventurePersistence({
       readState: () => this.persistedState(c),
       writeState: state => { stagedState = clone(state); }
     });
     const engine=new AdventureEngine({
-      registry:this.registry,mapAdapter:this.mapAdapter(c),worldAdapter:this.worldAdapter(c),rulesAdapter:this.rulesAdapter,
+      registry:this.registry,validator:this.registry.validator,mapAdapter:this.mapAdapter(c),
+      worldAdapter:this.worldAdapter(c),rulesAdapter:this.rulesAdapter,
       persistenceFactory:()=>stagingPersistence
     });
     const campaignId=c.campaignState?.session?.campaignId||c.campaignState?.campaignId||null;
     const state=await engine.start(adventureId,{mode,campaignId,locationId,sceneId,flags,worldSnapshot:this.worldSnapshot(c)});
-    const resolvedMode=state.startMode;
-    if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(resolvedMode)&&state.currentLocationId){
+    
+    if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(state.startMode)&&state.currentLocationId){
       const posOut = await this.positionAtModuleLocation(adventureId,state.currentLocationId);
       if(!posOut || posOut.ok !== true || posOut.resolved !== true || posOut.blocked === true){
+        if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
+        else delete c.worldPosition;
         throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut?.reason || 'unresolved'));
       }
     }
     const targetState = stagedState || clone(state);
-    const campaign=this.campaign(c);
-    const previousState = campaign ? clone(campaign.adventureState) : null;
     if(campaign) campaign.adventureState = targetState;
     if(typeof this.saveCharacter === 'function'){
       try{
         const saveRes = await this.saveCharacter(c);
         if(saveRes && typeof saveRes === 'object' && saveRes.ok === false){
           if(campaign){
-            if(previousState != null) campaign.adventureState = previousState;
+            if(previousAdventureState != null) campaign.adventureState = previousAdventureState;
             else delete campaign.adventureState;
           }
+          if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
+          else delete c.worldPosition;
           throw new Error('START_SAVE_CHARACTER_FAILED: ' + (saveRes.error || saveRes.reason || 'save rejected'));
         }
       }catch(err){
         if(campaign){
-          if(previousState != null) campaign.adventureState = previousState;
+          if(previousAdventureState != null) campaign.adventureState = previousAdventureState;
           else delete campaign.adventureState;
         }
+        if(previousWorldPosition != null) c.worldPosition = previousWorldPosition;
+        else delete c.worldPosition;
         throw err;
       }
     }

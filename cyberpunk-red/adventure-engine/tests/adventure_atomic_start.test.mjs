@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,7 +6,7 @@ import {CyberpunkAdventureController} from '../runtime/cyberpunk_adventure_contr
 
 const moduleData = JSON.parse(fs.readFileSync(new URL('../modules/red_chrome_cargo.json', import.meta.url), 'utf-8'));
 
-test('start() is atomic: atlas failure prevents mutation of campaignState.adventureState', async () => {
+test('start() is atomic: atlas failure prevents mutation of campaignState.adventureState and preserves worldPosition', async () => {
   let char = {
     characterId: 'pc1',
     worldPosition: {atlasId: 'night-city-2045', x: 10, y: 10, poiCode: 'old_loc'},
@@ -37,12 +37,15 @@ test('start() is atomic: atlas failure prevents mutation of campaignState.advent
     /START_LOCATION_POSITION_FAILED/
   );
 
-  // Assert memory state was NOT mutated and save was NOT called
+  // Assert memory state and coordinates were NOT mutated and save was NOT called
   assert.equal(char.campaignState.adventureState.adventureId, 'old_adventure');
+  assert.equal(char.worldPosition.x, 10);
+  assert.equal(char.worldPosition.y, 10);
+  assert.equal(char.worldPosition.poiCode, 'old_loc');
   assert.equal(saved, false);
 });
 
-test('start() is atomic: null or ambiguous atlas response is rejected and prevents mutation', async () => {
+test('start() is atomic: null or ambiguous atlas response is rejected and restores worldPosition', async () => {
   let char = {
     characterId: 'pc1',
     worldPosition: {atlasId: 'night-city-2045', x: 10, y: 10, poiCode: 'old_loc'},
@@ -74,10 +77,12 @@ test('start() is atomic: null or ambiguous atlas response is rejected and preven
   );
 
   assert.equal(char.campaignState.adventureState.adventureId, 'old_adventure');
+  assert.equal(char.worldPosition.x, 10);
+  assert.equal(char.worldPosition.y, 10);
   assert.equal(saved, false);
 });
 
-test('start() is atomic: saveCharacter returning {ok:false} rolls back memory state and throws error', async () => {
+test('start() is atomic: saveCharacter returning {ok:false} rolls back memory adventure state AND restores previous worldPosition', async () => {
   let char = {
     characterId: 'pc1',
     worldPosition: {atlasId: 'night-city-2045', x: 10, y: 10, poiCode: 'old_loc'},
@@ -87,7 +92,7 @@ test('start() is atomic: saveCharacter returning {ok:false} rolls back memory st
     }
   };
   const mockBridge = {
-    moveCharacter: async (id, pos) => ({ok: true, resolved: true, worldPosition: {...pos, atlasId: 'night-city-2045'}})
+    moveCharacter: async (id, pos) => ({ok: true, resolved: true, worldPosition: {...pos, x: 50, y: 60, atlasId: 'night-city-2045'}})
   };
   const mockAtlas = {
     poiCatalog: [{code: 'red_chrome_cargo_start', position: {x: 50, y: 60}, atlasId: 'night-city-2045'}]
@@ -107,11 +112,14 @@ test('start() is atomic: saveCharacter returning {ok:false} rolls back memory st
     /START_SAVE_CHARACTER_FAILED/
   );
 
-  // Assert memory state was rolled back to previous state
+  // Assert BOTH memory state AND worldPosition were rolled back to previous state
   assert.equal(char.campaignState.adventureState.adventureId, 'old_adventure');
+  assert.equal(char.worldPosition.x, 10);
+  assert.equal(char.worldPosition.y, 10);
+  assert.equal(char.worldPosition.poiCode, 'old_loc');
 });
 
-test('start() is atomic: saveCharacter throwing exception rolls back memory state', async () => {
+test('start() is atomic: saveCharacter throwing exception rolls back memory state AND restores previous worldPosition', async () => {
   let char = {
     characterId: 'pc1',
     worldPosition: {atlasId: 'night-city-2045', x: 10, y: 10, poiCode: 'old_loc'},
@@ -121,7 +129,7 @@ test('start() is atomic: saveCharacter throwing exception rolls back memory stat
     }
   };
   const mockBridge = {
-    moveCharacter: async (id, pos) => ({ok: true, resolved: true, worldPosition: {...pos, atlasId: 'night-city-2045'}})
+    moveCharacter: async (id, pos) => ({ok: true, resolved: true, worldPosition: {...pos, x: 50, y: 60, atlasId: 'night-city-2045'}})
   };
   const mockAtlas = {
     poiCatalog: [{code: 'red_chrome_cargo_start', position: {x: 50, y: 60}, atlasId: 'night-city-2045'}]
@@ -141,8 +149,11 @@ test('start() is atomic: saveCharacter throwing exception rolls back memory stat
     /database_locked/
   );
 
-  // Assert memory state was rolled back to previous state
+  // Assert BOTH memory state AND worldPosition were rolled back to previous state
   assert.equal(char.campaignState.adventureState.adventureId, 'old_adventure');
+  assert.equal(char.worldPosition.x, 10);
+  assert.equal(char.worldPosition.y, 10);
+  assert.equal(char.worldPosition.poiCode, 'old_loc');
 });
 
 test('controller v2 instantiates AdventureEngine v2 and connects loadSavedCharacter to storage', async () => {
@@ -166,8 +177,25 @@ test('controller v2 instantiates AdventureEngine v2 and connects loadSavedCharac
 
   assert.equal(ctrl.theJacket.snapshot().story.version, 2);
   // Perform transition
-    const res = await ctrl.theJacketTransition('first_fight');
+  const res = await ctrl.theJacketTransition('first_fight');
   assert.equal(res.result.ok, true);
   assert.equal(res.durableSaveVerified, true);
 });
 
+test('controller v2 without durable reader never claims durableSaveVerified=true', async () => {
+  const activeChar = {
+    characterId: 'pc1',
+    campaignState: {
+      session: {campaignId: 'camp1'}
+    }
+  };
+  const ctrl = new CyberpunkAdventureController({
+    getCharacter: () => activeChar,
+    saveCharacter: async () => ({ok: true})
+    // No bridge.loadCharacter, no loadSavedCharacter
+  });
+
+  const res = await ctrl.theJacketTransition('first_fight');
+  assert.equal(res.result.ok, true);
+  assert.equal(res.durableSaveVerified, false);
+});
