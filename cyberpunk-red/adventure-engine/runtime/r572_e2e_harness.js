@@ -257,7 +257,7 @@ export async function runR572EmulatorE2E({
         stateVersion: c.stateVersion
       };
 
-      // 5. TTS Universal V3 + Kokoro persistence and execution
+      // 5. TTS Universal V3 with Installed Engine on Emulator (Playback, Continuity, Interruption)
       const voice = globalThis.MotorBarbaraCore?.voice;
       const ttsSave = await voice.saveSettings({
         textModel: 'gemini-3.8-flash',
@@ -265,71 +265,148 @@ export async function runR572EmulatorE2E({
         voice: 'Fenrir',
         language: 'pt-BR',
         ttsEngine: 'kokoro',
-        androidEnginePackage: 'com.k2fsa.sherpa.onnx.tts.engine',
+        androidEnginePackage: 'com.braseiro.kokoro.ptbr',
         voiceStyle: 'Noir cyberpunk tenso e cinematográfico',
         voiceProfile: 'Mestre veterano de Night City',
         ttsSpeed: 1.25,
         vocalMode: 'distinct-voices',
         stripVocalTags: true
       });
+      const ttsCfgBefore = await voice.settings();
+      const installedEngines = ttsCfgBefore.installedEngines || ttsCfgBefore.installedTtsEngines || [];
+      if (!installedEngines.length || !ttsCfgBefore.kokoroInstalled) {
+        throw new Error(`TTS_NO_INSTALLED_ENGINE:installed=${installedEngines.length},kokoro=${ttsCfgBefore.kokoroInstalled}`);
+      }
+
+      // Continuous multi-chunk playback: 3 sentences queued sequentially
+      const multiChunkText =
+        '[sussurro] Mover observa o comboio da Red Chrome sob a chuva ácida. ' +
+        'Os motores blindados cortam a escuridão enquanto o tráfego de Watson estremece. ' +
+        'O container com os biochips experimentais está sem escolta da Militech.';
       const ttsSpeak = await voice.speak({
-        text: '[sussurro] Mover observa o comboio da Red Chrome sob a chuva ácida.',
+        text: multiChunkText,
         engine: 'kokoro',
         ttsSpeed: 1.25,
+        maxChunkChars: 120,
         stripVocalTags: true
       });
-      const ttsCfg = await voice.settings();
+
+      // STRICT validation: speakOk MUST be true
+      if (!ttsSpeak || ttsSpeak.ok !== true) {
+        throw new Error(`TTS_SPEAK_FAILED:speakOk=${ttsSpeak?.ok},err=${ttsSpeak?.error}`);
+      }
+      if (Number(ttsSpeak.chunks || 0) < 2) {
+        throw new Error(`TTS_CONTINUOUS_PLAYBACK_CHUNKS_NOT_SPLIT:chunks=${ttsSpeak.chunks}`);
+      }
+
+      // Poll briefly to verify playback initiation & continuity across chunks
+      await sleep(750);
+      const ttsStatusMid = await voice.settings();
+      const midAndroid = ttsStatusMid?.tts?.android || {};
+
+      // Mid-playback interruption via voice.stop()
+      const ttsStop = await voice.stop();
+      if (!ttsStop || ttsStop.ok !== true) {
+        throw new Error(`TTS_STOP_FAILED:${JSON.stringify(ttsStop)}`);
+      }
+      await sleep(200);
+      const ttsStatusAfterStop = await voice.settings();
+      const afterAndroid = ttsStatusAfterStop?.tts?.android || {};
+      const speakingAfterStop = afterAndroid.speaking === true;
+      if (speakingAfterStop) {
+        throw new Error('TTS_INTERRUPTION_FAILED_SPEAKING_AFTER_STOP');
+      }
+
       report.steps.ttsUniversalV3 = {
         savedOk: ttsSave?.ok === true,
-        speakOk: ttsSpeak?.ok !== false,
-        ttsEngine: ttsCfg.ttsEngine,
-        ttsModel: ttsCfg.ttsModel,
-        voice: ttsCfg.voice,
-        ttsSpeed: ttsCfg.ttsSpeed,
-        vocalMode: ttsCfg.vocalMode,
-        stripVocalTags: ttsCfg.stripVocalTags,
-        voiceStyle: ttsCfg.voiceStyle,
-        voiceProfile: ttsCfg.voiceProfile,
-        installedEnginesCount: (ttsCfg.installedEngines || []).length
+        speakOk: ttsSpeak?.ok === true,
+        installedEnginesCount: installedEngines.length,
+        kokoroInstalled: ttsCfgBefore.kokoroInstalled === true,
+        engineSelected: ttsSpeak.engine,
+        enginePackage: ttsSpeak.enginePackage,
+        continuousPlaybackQueuedChunks: ttsSpeak.chunks,
+        continuityVerified: Number(ttsSpeak.chunks) >= 2,
+        interruptedOk: ttsStop.ok === true,
+        wasActiveBeforeStop: ttsStop.wasActive === true || midAndroid.speaking === true,
+        speakingAfterStop: false,
+        lastCompletedChunk: midAndroid.currentChunkIndex || ttsStop.interruptedAtChunk || 1
       };
 
-      // 6. In-App Updater (braseiro.update/v1): reject bad SHA-256, apply valid package, rollback, and re-apply
-      const badPkg = await updaterApi.apply({
+      // 6. In-App Updater with GitHub Manifest Query, Package Authentication, Rollback & Real Functional OTA Patch
+      const liveFeatureBefore = updaterApi.getLiveFeature?.() || {};
+      const tacticalBefore = updaterApi.executeTacticalProtocol?.(c) || {};
+      if (liveFeatureBefore.otaActive !== false || tacticalBefore.tacticalBonus !== 0) {
+        throw new Error('UPDATER_PRE_UPDATE_STATE_NOT_BASE');
+      }
+
+      // 6a. GitHub Release Manifest Query over HTTPS
+      const ghCheck = await updaterApi.checkGitHub();
+      if (!ghCheck || ghCheck.ok !== true || ghCheck.updateAvailable !== true || ghCheck.latestVersionName !== '4.1.72-ota.2') {
+        throw new Error(`UPDATER_GITHUB_CHECK_FAILED:${JSON.stringify(ghCheck)}`);
+      }
+
+      // 6b. Reject Tampered SHA-256
+      const badShaPkg = await updaterApi.apply({
         format: 'braseiro.update/v1',
         systemId: 'cyberpunk-red',
         updateId: 'upd_bad_sha',
-        versionName: '4.1.72-bad',
+        versionName: '4.1.72-bad-sha',
         minVersionCode: 4100,
         maxVersionCode: 4200,
         sha256: '0000000000000000000000000000000000000000000000000000000000000000',
-        files: { 'web/app/ota_marker.json': '{"ota":"4.1.72-ota.1","verified":true}' }
+        signature: ghCheck.signature || 'dummy',
+        files: { 'web/app/ota_marker.json': '{"tampered":true}' }
       });
-      const computedSha = badPkg?.computedSha256 || '';
-      const goodPkgWithHash = {
+      if (badShaPkg?.ok !== false || badShaPkg?.error !== 'UPDATE_SHA256_MISMATCH') {
+        throw new Error(`UPDATER_BAD_SHA_NOT_REJECTED:${JSON.stringify(badShaPkg)}`);
+      }
+
+      // 6c. Reject Tampered Signature
+      const badSigPkg = await updaterApi.apply({
         format: 'braseiro.update/v1',
         systemId: 'cyberpunk-red',
-        updateId: 'upd_r572_ota_1',
-        versionName: '4.1.72-ota.1',
+        updateId: 'upd_bad_sig',
+        versionName: '4.1.72-bad-sig',
         minVersionCode: 4100,
         maxVersionCode: 4200,
-        sha256: computedSha,
-        files: { 'web/app/ota_marker.json': '{"ota":"4.1.72-ota.1","verified":true}' }
-      };
-
-      const applyRes1 = await updaterApi.apply(goodPkgWithHash);
-      const rollbackRes = await updaterApi.rollback();
-      const applyRes2 = await updaterApi.apply(goodPkgWithHash);
-      const dbAfterUpdate = await bridge.loadCharacter(c.characterId);
-
-      if (badPkg?.ok !== false || !applyRes1?.ok || !rollbackRes?.ok || !applyRes2?.ok || dbAfterUpdate?.economy?.eurobucks !== 2000) {
-        throw new Error(`UPDATER_VERIFICATION_FAILED:${JSON.stringify({ badPkg, applyRes1, rollbackRes, applyRes2 })}`);
+        sha256: badShaPkg?.computedSha256,
+        signature: 'INVALID_BASE64_SIGNATURE_TAMPERED==',
+        files: { 'web/app/ota_marker.json': '{"tampered":true}' }
+      });
+      if (badSigPkg?.ok !== false || badSigPkg?.error !== 'UPDATE_SIGNATURE_INVALID') {
+        throw new Error(`UPDATER_BAD_SIG_NOT_REJECTED:${JSON.stringify(badSigPkg)}`);
       }
+
+      // 6d. Download & Apply Authenticated Package directly from GitHub Releases
+      const applyGhRes = await updaterApi.downloadAndApplyGitHub();
+      if (!applyGhRes || applyGhRes.ok !== true || applyGhRes.appliedVersion !== '4.1.72-ota.2' || applyGhRes.signatureVerified !== true) {
+        throw new Error(`UPDATER_GITHUB_DOWNLOAD_APPLY_FAILED:${JSON.stringify(applyGhRes)}`);
+      }
+
+      // 6e. Test Rollback & Re-application
+      const rollbackRes = await updaterApi.rollback();
+      const dbAfterOtaRollback = await bridge.loadCharacter(c.characterId);
+      if (!rollbackRes || rollbackRes.ok !== true || dbAfterOtaRollback?.economy?.eurobucks !== 2000) {
+        throw new Error(`UPDATER_ROLLBACK_FAILED:${JSON.stringify(rollbackRes)}`);
+      }
+
+      // Re-apply GitHub package so active directory contains 4.1.72-ota.2 for reopen verification in Phase 2
+      const reapplyGhRes = await updaterApi.downloadAndApplyGitHub();
+      const dbAfterReapply = await bridge.loadCharacter(c.characterId);
+      if (!reapplyGhRes || reapplyGhRes.ok !== true || dbAfterReapply?.economy?.eurobucks !== 2000) {
+        throw new Error(`UPDATER_REAPPLY_FAILED:${JSON.stringify(reapplyGhRes)}`);
+      }
+
       report.steps.inAppUpdater = {
-        badShaRejected: badPkg.error === 'UPDATE_SHA256_MISMATCH',
-        appliedVersion: applyRes2.activeUpdate?.versionName || applyRes2.appliedVersion || '4.1.72-ota.1',
-        sha256Verified: applyRes2.sha256,
+        githubManifestVerified: ghCheck.latestVersionName === '4.1.72-ota.2',
+        badShaRejected: badShaPkg.error === 'UPDATE_SHA256_MISMATCH',
+        badSignatureRejected: badSigPkg.error === 'UPDATE_SIGNATURE_INVALID',
+        githubDownloadAndApplyOk: reapplyGhRes.ok === true,
+        appliedVersion: reapplyGhRes.appliedVersion,
+        sha256Verified: reapplyGhRes.sha256,
+        signatureVerified: reapplyGhRes.signatureVerified === true,
         rollbackTestedOk: rollbackRes.ok === true,
-        savesPreservedAfterUpdateAndRollback: dbAfterUpdate?.economy?.eurobucks === 2000
+        savesPreservedAfterUpdateAndRollback: dbAfterReapply?.economy?.eurobucks === 2000
       };
 
       report.ok = true;
@@ -355,6 +432,13 @@ export async function runR572EmulatorE2E({
 
       const legacyObj = c?.campaignState?.braseiroLegacy || c?.continuityLegacy || c?.campaignState?.continuityLegacy || null;
       const activeUpdVersion = updStatus?.activeUpdate?.versionName || updStatus?.activeManifest?.version || null;
+      const liveOtaFeature = updaterApi.getLiveFeature?.() || {};
+      const liveTactical = updaterApi.executeTacticalProtocol?.(c) || {};
+      const otaBadgeEl = document.querySelector('#otaLiveFeatureStatus');
+      const otaAdventureRegistered =
+        workbench?.adventureController?.registry?.has?.('ota_netwatch_blackwall_alert') === true ||
+        workbench?.adventureController?.registry?.adventures?.has?.('ota_netwatch_blackwall_alert') === true;
+
       const checks = {
         characterRestored: c?.characterId === 'char_ssp_pregen_03' && c?.name === 'Mover',
         adventureRestored: c?.campaignState?.adventureState?.adventureId === 'red_chrome_cargo',
@@ -372,7 +456,11 @@ export async function runR572EmulatorE2E({
           Number(voiceCfg?.ttsSpeed) === 1.25 &&
           Boolean(voiceCfg?.voiceStyle) &&
           Boolean(voiceCfg?.voiceProfile),
-        updaterActiveRestored: activeUpdVersion === '4.1.72-ota.1'
+        updaterActiveRestored: activeUpdVersion === '4.1.72-ota.2',
+        otaLiveModuleFunctionalChange: liveOtaFeature.otaActive === true && liveOtaFeature.version === '4.1.72-ota.2',
+        otaTacticalProtocolExecuted: liveTactical.otaActive === true && liveTactical.tacticalBonus === 2,
+        otaAdventureModuleAvailable: otaAdventureRegistered,
+        otaUiBannerRendered: otaBadgeEl?.dataset?.otaActive === 'true'
       };
 
       report.restored = {
@@ -392,7 +480,11 @@ export async function runR572EmulatorE2E({
         ttsModel: voiceCfg?.ttsModel,
         voice: voiceCfg?.voice,
         ttsSpeed: voiceCfg?.ttsSpeed,
-        updaterActiveVersion: activeUpdVersion
+        updaterActiveVersion: activeUpdVersion,
+        otaLiveFeatureVersion: liveOtaFeature.version,
+        otaLiveFeatureActive: liveOtaFeature.otaActive,
+        otaTacticalBonus: liveTactical.tacticalBonus,
+        otaAdventureRegistered: otaAdventureRegistered
       };
 
       if (!Object.values(checks).every(Boolean)) {
