@@ -62,7 +62,7 @@ export class CyberpunkRulesAdapter{
 
   normalizeResult(out,type,action,authority){
     const r=out&&typeof out==='object'?out:{ok:false,error:'invalid rule result'};
-    const ok=r.ok!==false&&r.resolved===true&&r.blocked!==true;
+    const ok=r.ok===true&&r.resolved===true&&r.blocked!==true;
     return{
       ...clone(r),
       ok,

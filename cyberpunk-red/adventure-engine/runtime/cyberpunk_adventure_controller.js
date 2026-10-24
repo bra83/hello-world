@@ -102,7 +102,10 @@ export class CyberpunkAdventureController{
     c.campaignState.adventureState=state;
     const resolvedMode=state.startMode;
     if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(resolvedMode)&&state.currentLocationId){
-      await this.positionAtModuleLocation(adventureId,state.currentLocationId);
+      const posOut = await this.positionAtModuleLocation(adventureId,state.currentLocationId);
+      if(posOut && posOut.ok === false){
+        throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut.reason || 'unresolved'));
+      }
     }
     await this.saveCharacter?.(c);
     this.hostEvents.seedClock();

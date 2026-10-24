@@ -30,7 +30,12 @@ export class CyberpunkAdventureController extends BaseController {
     const campaignId=c.campaignState?.session?.campaignId||c.campaignState?.campaignId||null;
     const state=await engine.start(adventureId,{mode,campaignId,locationId,sceneId,flags,worldSnapshot:this.worldSnapshot(c)});
     c.campaignState.adventureState=state;
-    if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(state.startMode)&&state.currentLocationId)await this.positionAtModuleLocation(adventureId,state.currentLocationId);
+    if([StartMode.OFFICIAL_ADVENTURE,StartMode.GUIDED_CAMPAIGN,StartMode.SOLO,StartMode.TAVERN_START].includes(state.startMode)&&state.currentLocationId){
+      const posOut = await this.positionAtModuleLocation(adventureId,state.currentLocationId);
+      if(posOut && posOut.ok === false){
+        throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut.reason || 'unresolved'));
+      }
+    }
     await this.saveCharacter?.(c);this.hostEvents.seedClock();return state;
   }
 }

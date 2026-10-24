@@ -41,6 +41,22 @@ data_dest.mkdir(parents=True, exist_ok=True)
 shutil.copy2(runtime_src / "adventure_engine.js", app / "adventure_engine.js")
 shutil.copy2(runtime_src / "cyberpunk_adventure_controller.js", app / "cyberpunk_adventure_controller.js")
 shutil.copy2(runtime_src / "cyberpunk_host_adapters.js", app / "cyberpunk_host_adapters.js")
+
+# Package all runtime extension modules
+for ext in (
+    "cemk_the_jacket_mechanics.js",
+    "cemk_the_jacket_registry.js",
+    "cemk_the_jacket_wallet_port.js",
+    "elflines_ep1_registry.js",
+    "elflines_integration.js",
+    "elflines_rules_engine.js",
+    "single_shot_pack_registry.js",
+    "single_shot_pregen_identities.js",
+    "single_shot_pregen_skill_profiles.js",
+):
+    ext_src = runtime_src / ext
+    if ext_src.is_file():
+        shutil.copy2(ext_src, app / ext)
 shutil.copy2(schema_src, data_dest / "adventure-module.schema.json")
 for src in modules_src.glob("*.json"):
     shutil.copy2(src, data_dest / src.name)
