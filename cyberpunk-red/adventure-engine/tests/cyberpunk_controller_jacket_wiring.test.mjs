@@ -22,7 +22,7 @@ test('patched controller exposes player-only The Jacket port and strips sealed n
   fs.writeFileSync(path.join(dir,'adventure_engine_v2.js'),
    `export class AdventureEngine{};export class AdventureRuntime{};
     export class AdventureRegistry{constructor({validator}){this.validator=validator;}}
-    export class AdventureValidator{};export const StartMode={};export const migrateAdventureState=x=>x;`);
+    export class AdventureValidator{};export class AdventurePersistence{};export const StartMode={};export const migrateAdventureState=x=>x;`);
   fs.writeFileSync(path.join(dir,'cyberpunk_host_adapters.js'),`export const CYBERPUNK_RULE_ACTIONS=['SKILL_CHECK'];`);
   const {CyberpunkAdventureController}=await import(pathToFileURL(path.join(dir,'cyberpunk_adventure_controller_v2.js')).href);
   const c={characterId:'pc',campaignState:{session:{campaignId:'camp'}}};

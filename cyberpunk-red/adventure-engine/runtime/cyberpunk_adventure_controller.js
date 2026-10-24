@@ -111,11 +111,28 @@ export class CyberpunkAdventureController{
         throw new Error('START_LOCATION_POSITION_FAILED: ' + (posOut?.reason || 'unresolved'));
       }
     }
+    const targetState = stagedState || clone(state);
     const campaign=this.campaign(c);
-    if(campaign){
-      campaign.adventureState = stagedState || clone(state);
+    const previousState = campaign ? clone(campaign.adventureState) : null;
+    if(campaign) campaign.adventureState = targetState;
+    if(typeof this.saveCharacter === 'function'){
+      try{
+        const saveRes = await this.saveCharacter(c);
+        if(saveRes && typeof saveRes === 'object' && saveRes.ok === false){
+          if(campaign){
+            if(previousState != null) campaign.adventureState = previousState;
+            else delete campaign.adventureState;
+          }
+          throw new Error('START_SAVE_CHARACTER_FAILED: ' + (saveRes.error || saveRes.reason || 'save rejected'));
+        }
+      }catch(err){
+        if(campaign){
+          if(previousState != null) campaign.adventureState = previousState;
+          else delete campaign.adventureState;
+        }
+        throw err;
+      }
     }
-    await this.saveCharacter?.(c);
     this.hostEvents.seedClock();
     return state;
   }
