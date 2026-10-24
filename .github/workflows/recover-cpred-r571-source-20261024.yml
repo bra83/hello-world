@@ -1,0 +1,57 @@
+name: Recover Cyberpunk RED R5.71 source
+on:
+  push:
+    branches: ["recovery/cyberpunk-r571-source-20261024"]
+    paths: [".github/workflows/recover-cpred-r571-source-20261024.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  preserve-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: bra83/hello-world
+      TAG: cyberpunk-red-r571-source-recovered-20261024
+    steps:
+      - name: Recover original source artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/actions/artifacts/10792548291/zip" > original.zip
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          artifact=pathlib.Path("original.zip")
+          expected="0697d5ed64dc49f6d15dcd4232fea09b5271a8e8454eac2732c885fd7fac44d3"
+          assert hashlib.file_digest(artifact.open("rb"),"sha256").hexdigest()==expected, "Artifact hash mismatch"
+          name="CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX_CHECKPOINT.zip"
+          with zipfile.ZipFile(artifact) as archive:
+              archive.extract(name, ".")
+          source=pathlib.Path(name)
+          actual=hashlib.file_digest(source.open("rb"),"sha256").hexdigest()
+          assert actual=="e912ff866975bc98316755a99e8c6c1f823f7359e0e3ab7278895a9e7c5a1202", "Source hash mismatch"
+          with zipfile.ZipFile(source) as archive:
+              assert archive.testzip() is None, "Invalid source ZIP"
+          pathlib.Path(name+".sha256").write_text(actual+"  "+name+"\n")
+          print("SOURCE_VERIFIED",source.stat().st_size,actual)
+          PY
+      - name: Publish preserved source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE=CYBERPUNK_RED_R5_71_TYPOGRAPHY_ICON_FIX_CHECKPOINT.zip
+          cat > release-notes.md <<'NOTES'
+          Fonte Android completa original R5.71, recuperada do build 35961839947.
+          Sem alteracoes de codigo. Base executavel 4.1.71 / versionCode 4171.
+          Para continuar o trabalho, aplicar a linha R5.72 e revisar os deltas RUN13 conforme o handoff.
+          Esta publicacao preserva a fonte; nao representa um novo APK ou homologacao final.
+          SHA-256: e912ff866975bc98316755a99e8c6c1f823f7359e0e3ab7278895a9e7c5a1202
+          NOTES
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite assets."
+            exit 1
+          fi
+          gh release create "$TAG" "$SOURCE" "$SOURCE.sha256" --repo "$REPO" --target 64205f10188e4d313f86e7be818bd657fd01bfb9 --prerelease --title "Cyberpunk RED R5.71 - fonte completa recuperada" --notes-file release-notes.md
+          gh release view "$TAG" --repo "$REPO" --json url,assets
