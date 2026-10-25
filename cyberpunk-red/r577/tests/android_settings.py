@@ -1,6 +1,8 @@
 """Run retained native regression, then save model IDs through the real Android UI."""
 from pathlib import Path
-exec(compile((Path(__file__).parents[2]/'r575/tests/android_navigation.py').read_text(),'android_navigation.py','exec'))
+base_navigation=(Path(__file__).parents[2]/'r575/tests/android_navigation.py').read_text()
+# Reuse real ADB/UI helpers, then test this regression before the longer suite.
+exec(compile(base_navigation.split("adb('install', '-r', apk)",1)[0],'android_helpers.py','exec'))
 import xml.etree.ElementTree as ET
 screen_height=int(re.findall(r'\d+',adb('shell','wm','size'))[-1])
 
@@ -34,8 +36,10 @@ def enter_model(model):
     assert any(n.get('class')=='android.widget.EditText' and n.get('text')==model for n in typed.iter('node')), 'Keyboard did not replace the model text'
     # A real Android Back must close the IME while keeping this Activity/draft.
     adb('shell','input','keyevent','KEYCODE_BACK');time.sleep(.6)
-    focus=adb('shell','dumpsys','window','windows')
-    assert any(package in line for line in focus.splitlines() if 'mCurrentFocus' in line), 'Back closed the app instead of hiding the keyboard'
+    after=hierarchy()
+    (out/'settings-after-keyboard-back.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
+    assert any(n.get('package')==package and n.get('class')=='android.webkit.WebView' for n in after.iter('node')), 'Back closed the app instead of hiding the keyboard'
+    assert any(n.get('class')=='android.widget.EditText' and n.get('text')==model for n in after.iter('node')), 'Back discarded the model draft'
     for _ in range(10):
         candidates=[n for n in hierarchy().iter('node') if 'SALVAR MODELOS/VOZ' in n.get('text','')]
         if any(visible(n) and int(re.findall(r'\d+',n.get('bounds'))[-1])<screen_height-240 for n in candidates):break
@@ -47,6 +51,13 @@ def saved_model():
     xml=adb('exec-out','run-as',package,'cat','shared_prefs/cpred-secure-runtime.xml')
     return next(n.text for n in ET.fromstring(xml) if n.get('name')=='gemini_text_model')
 
+adb('install','-r',apk);adb('logcat','-c')
+adb('shell','input','keyevent','KEYCODE_WAKEUP');adb('shell','wm','dismiss-keyguard')
+adb('shell','am','start','-n',package+'/.MainActivity')
+for _ in range(60):
+    if '[CPRED_UI_READY]' in adb('logcat','-d','-s','CPRED_WEBVIEW:*'):break
+    time.sleep(1)
+else:raise AssertionError('Settings test app failed to boot')
 settings_page()
 # Prefixed IDs previously fell back silently to the previous setting.
 enter_model('models/gemini-2.5-flash')
@@ -74,3 +85,6 @@ for _ in range(15):
 else:raise AssertionError('Explicit legacy model not restored in real UI')
 (out/'settings-persisted-after-reopen.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
 print('PASS: real Android text-model save, models/ normalization, SharedPreferences readback, explicit legacy ID retained and two force-stop/reopen cycles',flush=True)
+
+# Install the same tested APK again and run all retained native regressions.
+exec(compile(base_navigation,'android_navigation.py','exec'))
