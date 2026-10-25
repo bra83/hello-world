@@ -33,6 +33,24 @@ def apply(root):
     s=replace_once(s,'        prefs.edit()\n            .putString(TEXT_MODEL, selectedTextModel)','        val saved = prefs.edit()\n            .putString(TEXT_MODEL, selectedTextModel)')
     s=replace_once(s,'.putBoolean(TTS_STRIP_TAGS, safeStripTags)\n            .apply()', '.putBoolean(TTS_STRIP_TAGS, safeStripTags)\n            .commit()\n        check(saved) { "Não foi possível gravar as configurações no aparelho." }')
     p.write_text(s)
+    p=root/'app/src/main/java/com/braseiro/cyberpunkred/MainActivity.kt'
+    s=p.read_text()
+    s=replace_once(s,'    private lateinit var webView: WebView','    private var imeVisible = false\n    private lateinit var webView: WebView')
+    s=replace_once(s,'            view.setPadding(0, bars.top, 0, bars.bottom)', '            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())\n            imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())\n            view.setPadding(0, bars.top, 0, maxOf(bars.bottom, ime.bottom))')
+    s=replace_once(s,'            WindowInsetsCompat.Builder(insets)\n', '            WindowInsetsCompat.Builder(insets)\n                .setInsets(WindowInsetsCompat.Type.ime(), androidx.core.graphics.Insets.NONE)\n')
+    s=replace_once(s,'            override fun handleOnBackPressed() {\n                if (diceOverlay.visibility', '''            override fun handleOnBackPressed() {
+                if (imeVisible) {
+                    // Closing the keyboard must never finish the Activity and
+                    // discard the unsaved model/character input.
+                    webView.evaluateJavascript("document.activeElement && document.activeElement.blur && document.activeElement.blur()", null)
+                    val keyboard = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    keyboard.hideSoftInputFromWindow(webView.windowToken, 0)
+                    WindowCompat.getInsetsController(window, root).hide(WindowInsetsCompat.Type.ime())
+                    return
+                }
+                if (diceOverlay.visibility''')
+    p.write_text(s)
+    p=root/'app/src/main/AndroidManifest.xml';s=p.read_text();s=replace_once(s,'android:screenOrientation="portrait"','android:screenOrientation="portrait"\n            android:windowSoftInputMode="adjustResize"');p.write_text(s)
     p=app/'app.js';s=p.read_text(encoding='utf-8-sig')
     s=replace_once(s,'let geminiSettingsDirty=false;', 'let geminiSettingsDirty=false,geminiSettingsEditVersion=0,geminiSettingsLoadVersion=0,geminiSettingsSaving=false;')
     s=replace_once(s,'async function loadGeminiSettings(preserveEdits=false){','async function loadGeminiSettings(preserveEdits=true){\n const loadVersion=++geminiSettingsLoadVersion,editVersion=geminiSettingsEditVersion;')

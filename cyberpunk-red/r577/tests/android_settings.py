@@ -32,10 +32,10 @@ def enter_model(model):
     adb('shell','input','text',model)
     typed=hierarchy()
     assert any(n.get('class')=='android.widget.EditText' and n.get('text')==model for n in typed.iter('node')), 'Keyboard did not replace the model text'
-    # Use the app's visible settings shortcut: activateTab blurs the input and
-    # calls AndroidContent.hideKeyboard without ever dispatching Android Back.
-    # The unsaved edited value must survive reopening the same settings screen.
-    tap('Abrir configuração Gemini')
+    # A real Android Back must close the IME while keeping this Activity/draft.
+    adb('shell','input','keyevent','KEYCODE_BACK');time.sleep(.6)
+    focus=adb('shell','dumpsys','window','windows')
+    assert any(package in line for line in focus.splitlines() if 'mCurrentFocus' in line), 'Back closed the app instead of hiding the keyboard'
     for _ in range(10):
         candidates=[n for n in hierarchy().iter('node') if 'SALVAR MODELOS/VOZ' in n.get('text','')]
         if any(visible(n) and int(re.findall(r'\d+',n.get('bounds'))[-1])<screen_height-240 for n in candidates):break
