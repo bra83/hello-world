@@ -80,6 +80,16 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: python cyberpunk-red/mobile-r573/tests/android_navigation.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
+      - name: Publish diagnostic evidence on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p evidence
+          zip -qr failure-evidence.zip evidence
+          TAG=cyberpunk-red-r574-diagnostics-20261025
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk 4.1.74 diagnostic evidence' --notes 'Automated screenshots and logs for debugging, no APK.'
+          gh release upload "$TAG" failure-evidence.zip --clobber
       - name: Package source and APK
         run: |
           mkdir -p deliverables

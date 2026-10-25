@@ -16,6 +16,7 @@ const bridge=new BarbaraHostBridge();
 // Segurança: o segredo não é retornado à WebView; somente status/configurações públicas atravessam a bridge.
 let character=createCharacter({method:'complete',role:'solo',name:'Razor'});
 let importedAsset=false;
+let bootCharacterReady=Promise.resolve();
 const atlas=new NightCityAtlas({bridge,getCharacter:()=>character,toast:t=>toast(t)});
 atlas.init().catch(e=>toast(`Atlas: ${e.message}`));
 const gameplay=new LivingNightCityUI({atlas,bridge,getCharacter:()=>character,setCharacter:c=>{character=c},renderCharacter:()=>{applyAssets();render()},toast:t=>toast(t)});
@@ -161,8 +162,9 @@ async function refreshCharacterRoster(){
  $('#deleteCharacterBtn').disabled=draft;
  return rows;
 }
-async function withRosterTask(task){if(rosterBusy)return;rosterBusy=true;try{await task()}catch(e){toast(e.message);$('#characterManagerStatus').textContent=e.message}finally{rosterBusy=false}}
+async function withRosterTask(task){if(rosterBusy)return;rosterBusy=true;try{await bootCharacterReady;await task()}catch(e){toast(e.message);$('#characterManagerStatus').textContent=e.message}finally{rosterBusy=false}}
 async function exportJson(){
+ await bootCharacterReady;
  try{syncIdentity();const text=serializeCharacter(character),name=`${character.name.replace(/\W+/g,'_')}.cyberpunk-red.json`;
  if(globalThis.AndroidContent?.exportCharacterJson){AndroidContent.exportCharacterJson(name,text);toast('Escolha onde salvar a ficha .json');}
  else {download(name,text);toast('Ficha JSON exportada')}
@@ -185,7 +187,7 @@ function installCharacterManager(){
  bind('#newCharacterBtn','click',()=>withRosterTask(async()=>{
    syncIdentity();await persistCharacter(character);
    const c=createCharacter({method:'complete',role:'solo',name:'Novo personagem'});await persistCharacter(c);
-   character=c;importedAsset=false;setDefaultAssets();render();await refreshCharacterRoster();activateTab('create');$('#nameInput').focus();toast('Novo personagem criado. Escolha nome, método e função.');
+   character=c;importedAsset=false;setDefaultAssets();render();await refreshCharacterRoster();activateTab('create');toast('Novo personagem criado. Escolha nome, método e função.');
  }));
  bind('#saveCharacterBtn','click',saveCore);bind('#characterExportBtn','click',exportJson);
  bind('#characterImportFile','change',e=>{const file=e.target.files?.[0];if(file)importJson(file);e.target.value=''});
@@ -223,6 +225,8 @@ async function restoreActiveCharacterOnBoot(){
 }
 
 function activateTab(tab){
+ const focused=document.activeElement;if(focused&&['INPUT','TEXTAREA','SELECT'].includes(focused.tagName))focused.blur();
+ globalThis.AndroidContent?.hideKeyboard?.();
  const target=document.querySelector(`.tabs button[data-tab="${tab}"]`);if(!target)return false;
  document.body.dataset.activeTab=tab;console.info('[CPRED_NAVIGATION]',tab);
  const labels={table:'CENA',game:'MUNDO',atlas:'MAPA',sheet:'FICHA',inventory:'MOCHILA',stories:'TRABALHO',combat:'COMBATE',net:'NET',vehicle:'VEÍCULO',library:'BIBLIOTECA'};document.documentElement.dataset.screenLabel=labels[tab]||tab.toUpperCase();
@@ -534,7 +538,7 @@ setInterval(()=>{if($('#tab-audio')?.classList.contains('active'))loadGeminiSett
 
 applyAssets();render();loadGeminiSettings();installPtBrObserver();installContextHelp();
 registerOtaContent({workbench, document});
-restoreActiveCharacterOnBoot().finally(()=>{
+bootCharacterReady=restoreActiveCharacterOnBoot().finally(()=>{
   setTimeout(()=>{
     try{workbench.render?.();gameplay.renderAll?.();atlas.syncCharacter?.()}catch(error){console.warn('[CPRED_BOOT_REFRESH]',error)}
   },120);

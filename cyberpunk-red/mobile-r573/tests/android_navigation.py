@@ -47,6 +47,8 @@ def tap(label):
         time.sleep(1)
     (out/'failed-navigation.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
     (out/'failed-logcat.txt').write_text(adb('logcat','-d'))
+    print((out/'last-window.xml').read_text(), flush=True)
+    print(adb('logcat','-d','-s','CPRED_WEBVIEW:*'), flush=True)
     raise AssertionError(f'Visible control not found: {label}')
 
 adb('install', '-r', apk)

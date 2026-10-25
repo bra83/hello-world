@@ -146,7 +146,9 @@ class MainActivity : AppCompatActivity() {
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             view.setPadding(0, bars.top, 0, bars.bottom)
-            WindowInsetsCompat.CONSUMED
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(), androidx.core.graphics.Insets.NONE)
+                .build()
         }
         ViewCompat.requestApplyInsets(root)
         captureIncomingImage(intent)
@@ -438,6 +440,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private inner class ContentImportBridge {
+        @JavascriptInterface
+        fun hideKeyboard() {
+            runOnUiThread {
+                val keyboard = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                keyboard.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+
         @JavascriptInterface
         fun exportCharacterJson(name: String, text: String): String {
             require(text.toByteArray(Charsets.UTF_8).size <= 16 * 1024 * 1024) { "Ficha muito grande" }
