@@ -84,7 +84,7 @@ def apply(root):
     files['barbara/pipeline.py']=s.encode()
     s=files['barbara/fallback.py'].decode();s=replace_once(s,'    FALLBACK_CODES = {', "    FALLBACK_CODES = {\n        'gemini_output_truncated','opening_repetitive','fato_claim_sem_evidencia','regra_claim_sem_evidencia','rumor_sem_evidencia','world_introduction_claimed_but_missing',")
     files['barbara/fallback.py']=s.encode()
-    s=files['barbara/gemini.py'].decode();s=replace_once(s,"'responseMimeType':'application/json','responseSchema':self._schema()", "'responseMimeType':'application/json','responseSchema':self._schema(),'maxOutputTokens':8192")
+    s=files['barbara/gemini.py'].decode()
     s=replace_once(s,"'Return only the requested JSON object.'", "'Use the Mestre Humano Dinâmico narrative profile. A campaign_opening needs 5,000–6,000 characters, at least 5,000, in eight or more substantial distinct paragraphs. Build a playable situation from the authorized public premise, people and geography; atmospheric decoration alone is not a complete opening. Never pad or repeat paragraphs to reach the count. Preserve the existing chronology and player agency.','Return only the requested JSON object.'")
     old="        try: raw=payload['candidates'][0]['content']['parts'][0]['text']; out=json.loads(raw)"
     new="        try:\n            candidate=payload['candidates'][0]\n            if candidate.get('finishReason')=='MAX_TOKENS':raise ValueError('gemini_output_truncated')\n            raw=''.join(part.get('text','') for part in candidate['content']['parts'] if isinstance(part,dict) and not part.get('thought'))\n            out=json.loads(raw)"

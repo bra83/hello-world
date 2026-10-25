@@ -45,7 +45,8 @@ class HTTP(io.BytesIO):
     def __enter__(self):return self
     def __exit__(self,*args):self.close()
 def http(req,timeout):
-    body=json.loads(req.data);assert body['generationConfig']['maxOutputTokens']==8192
+    body=json.loads(req.data);assert body['generationConfig']['responseMimeType']=='application/json'
+    assert 'maxOutputTokens' not in body['generationConfig'], 'Do not reduce the selected model default shared thinking/output budget'
     envelope=json.loads(body['contents'][0]['parts'][0]['text']);calls.append(envelope)
     assert envelope['context']['narrative_policy']['world_introduction']['target_chars']==[5000,6000]
     text=responses.pop(0)
