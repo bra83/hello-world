@@ -16,7 +16,9 @@ def adb(*args, binary=False):
 
 def hierarchy():
     adb('shell', 'uiautomator', 'dump', '/sdcard/cpred-window.xml')
-    return ET.fromstring(adb('shell', 'cat', '/sdcard/cpred-window.xml'))
+    xml=adb('shell', 'cat', '/sdcard/cpred-window.xml')
+    (out/'last-window.xml').write_text(xml)
+    return ET.fromstring(xml)
 
 def tap(label):
     for attempt in range(12):
@@ -25,7 +27,11 @@ def tap(label):
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError):
             time.sleep(1)
             continue
-        matches = [n for n in root.iter('node') if n.get('text', '').strip().upper() == label.upper()]
+        def matches_label(node):
+            name=re.sub(r'\s+', ' ', node.get('text', '') or node.get('content-desc', '')).strip().upper()
+            wanted=label.upper()
+            return name==wanted or name.endswith(' '+wanted) or name.startswith(wanted+' ')
+        matches = [n for n in root.iter('node') if matches_label(n)]
         if matches:
             # Bottom navigation wins over duplicate links in the content.
             n = max(matches, key=lambda n: int(re.findall(r'\d+', n.get('bounds'))[1]))
@@ -34,6 +40,8 @@ def tap(label):
             print('TOUCH', label, flush=True)
             return
         time.sleep(1)
+    (out/'failed-navigation.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
+    (out/'failed-logcat.txt').write_text(adb('logcat','-d'))
     raise AssertionError(f'Visible control not found: {label}')
 
 adb('install', '-r', apk)

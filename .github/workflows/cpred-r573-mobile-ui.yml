@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: write
+  actions: read
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -58,7 +59,24 @@ jobs:
           packages: platform-tools
       - name: Install Android platform
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Reuse the identical compiled APK for test-only changes
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo 'reused=false' >> "$GITHUB_OUTPUT"
+          FINGERPRINT=$(python cyberpunk-red/mobile-r573/source_fingerprint.py)
+          if [ "$FINGERPRINT" = d180080da62b34019b6db67aebfd08a7976b00636c865f1176da26af3fa842ac ]; then
+            if gh run download 40168135556 --name cyberpunk-r573-build-and-navigation --dir /tmp/cpred-prior; then
+              mkdir -p build-source/android/app/build/outputs/apk/debug
+              cp /tmp/cpred-prior/build-source/android/app/build/outputs/apk/debug/app-debug.apk build-source/android/app/build/outputs/apk/debug/app-debug.apk
+              cp /tmp/cpred-prior/android-build.log android-build.log
+              echo 'reused=true' >> "$GITHUB_OUTPUT"
+              echo 'Reused APK compiled from 3420b9d; Android source fingerprint is identical.'
+            fi
+          fi
       - name: Compile Android APK
+        if: steps.reuse.outputs.reused != 'true'
         working-directory: build-source/android
         run: |
           chmod +x gradlew
