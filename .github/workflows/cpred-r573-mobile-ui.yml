@@ -13,6 +13,9 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -45,8 +48,14 @@ jobs:
           CPRED_TEST_OUTPUT: ${{ github.workspace }}/evidence/browser
         run: |
           python -m http.server 8091 --bind 127.0.0.1 > /tmp/cpred-http.log 2>&1 &
+          CPRED_HTTP_PID=$!
+          trap 'kill "$CPRED_HTTP_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do curl --silent --fail http://127.0.0.1:8091/ >/dev/null && break; sleep 0.2; done
+          curl --silent --fail http://127.0.0.1:8091/ >/dev/null
           node cyberpunk-red/mobile-r573/tests/navigation.cjs | tee navigation.log
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install Android platform
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - name: Compile Android APK
