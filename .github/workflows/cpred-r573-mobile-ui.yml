@@ -26,7 +26,7 @@ jobs:
         run: |
           curl --fail --location --retry 3 -o base.zip https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r572-final-20261024/CYBERPUNK_RED_R5_72_FINAL_ANDROID_SOURCE.zip
           echo '7c0735fdf0c24f107dd878cfd5332caf4424c1148ab975be582ea7417d3d2c24  base.zip' | sha256sum --check
-          unzip -q base.zip -d build-source
+          python -c "import zipfile; zipfile.ZipFile('base.zip').extractall('build-source')"
           python cyberpunk-red/mobile-r573/apply.py build-source/android
       - name: Rules regression
         run: node --test cyberpunk-red/adventure-engine/tests/*.test.mjs
