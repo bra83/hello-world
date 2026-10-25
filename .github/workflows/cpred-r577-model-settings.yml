@@ -47,7 +47,12 @@ jobs:
       - name: Install browser for real click tests
         run: |
           npm install --prefix /tmp/cpred-browser --no-save playwright@1.51.1
-          node /tmp/cpred-browser/node_modules/playwright/cli.js install --with-deps chromium
+          CPRED_BROWSER_BIN=$(command -v google-chrome || command -v chromium || true)
+          if [ -n "$CPRED_BROWSER_BIN" ]; then
+            echo "CPRED_CHROME=$CPRED_BROWSER_BIN" >> "$GITHUB_ENV"
+          else
+            node /tmp/cpred-browser/node_modules/playwright/cli.js install --with-deps chromium
+          fi
       - name: Exercise mobile navigation and asynchronous transport
         env:
           NODE_PATH: /tmp/cpred-browser/node_modules

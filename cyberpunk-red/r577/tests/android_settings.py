@@ -18,7 +18,9 @@ def text_model_field():
         tree=hierarchy()
         candidates=[n for n in tree.iter('node') if visible(n) and n.get('class')=='android.widget.EditText' and (n.get('text','').startswith('gemini-') or n.get('text','').startswith('models/'))]
         if candidates:return candidates[0]
-        adb('shell','input','swipe','500','600','500','1300','300');time.sleep(.3)
+        # Settings is a long page; swipe up to reveal controls below the fold.
+        adb('shell','input','swipe','500','1450','500','550','350');time.sleep(.5)
+    (out/'settings-field-not-visible.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
     raise AssertionError('Text model edit control not visible')
 
 
@@ -30,7 +32,7 @@ def enter_model(model):
     adb('shell','input','text',model);adb('shell','input','keyevent','KEYCODE_BACK')
     for _ in range(10):
         candidates=[n for n in hierarchy().iter('node') if 'SALVAR MODELOS/VOZ' in n.get('text','')]
-        if any(visible(n) for n in candidates):break
+        if any(visible(n) and int(re.findall(r'\d+',n.get('bounds'))[-1])<screen_height-240 for n in candidates):break
         adb('shell','input','swipe','500','1350','500','550','300');time.sleep(.2)
     tap('SALVAR MODELOS/VOZ')
 
