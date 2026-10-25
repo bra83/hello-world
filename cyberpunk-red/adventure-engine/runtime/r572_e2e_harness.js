@@ -257,7 +257,7 @@ export async function runR572EmulatorE2E({
         stateVersion: c.stateVersion
       };
 
-      // 5. TTS Universal V3 with Installed Engine on Emulator (Playback, Continuity, Interruption)
+      // 5. TTS Universal V3 with Installed Sherpa/Kokoro on Emulator (Multi-Chunk Playback to Completion via Callbacks & Separate Interruption)
       const voice = globalThis.MotorBarbaraCore?.voice;
       const ttsSave = await voice.saveSettings({
         textModel: 'gemini-3.8-flash',
@@ -278,7 +278,7 @@ export async function runR572EmulatorE2E({
         throw new Error(`TTS_NO_INSTALLED_ENGINE:installed=${installedEngines.length},kokoro=${ttsCfgBefore.kokoroInstalled}`);
       }
 
-      // Continuous multi-chunk playback: 3 sentences queued sequentially
+      // 5a. Continuous multi-chunk playback to completion: 3 sentences queued sequentially
       const multiChunkText =
         '[sussurro] Mover observa o comboio da Red Chrome sob a chuva ácida. ' +
         'Os motores blindados cortam a escuridão enquanto o tráfego de Watson estremece. ' +
@@ -287,7 +287,7 @@ export async function runR572EmulatorE2E({
         text: multiChunkText,
         engine: 'kokoro',
         ttsSpeed: 1.25,
-        maxChunkChars: 120,
+        maxChunkChars: 90,
         stripVocalTags: true
       });
 
@@ -299,21 +299,46 @@ export async function runR572EmulatorE2E({
         throw new Error(`TTS_CONTINUOUS_PLAYBACK_CHUNKS_NOT_SPLIT:chunks=${ttsSpeak.chunks}`);
       }
 
-      // Poll briefly to verify playback initiation & continuity across chunks
-      await sleep(750);
-      const ttsStatusMid = await voice.settings();
-      const midAndroid = ttsStatusMid?.tts?.android || {};
+      // Wait for complete multi-chunk playback through real onDone callbacks
+      let fullPlaybackCompleted = false;
+      let finalPlaybackStatus = null;
+      for (let i = 0; i < 80; i++) {
+        await sleep(250);
+        const st = await voice.settings();
+        const android = st?.tts?.android || {};
+        if (android.completedChunksCount >= Number(ttsSpeak.chunks || 2) && android.speaking === false) {
+          fullPlaybackCompleted = true;
+          finalPlaybackStatus = android;
+          break;
+        }
+      }
+      if (!fullPlaybackCompleted) {
+        const fallbackStatus = (await voice.settings())?.tts?.android || {};
+        throw new Error(`TTS_MULTI_CHUNK_PLAYBACK_TIMEOUT:completed=${fallbackStatus.completedChunksCount},expected=${ttsSpeak.chunks},events=${JSON.stringify(fallbackStatus.chunkEvents)}`);
+      }
 
-      // Mid-playback interruption via voice.stop()
+      // 5b. Separate Interruption Test on Independent Utterance
+      const interruptSpeak = await voice.speak({
+        text: 'Este é um teste isolado de interrupção imediata da síntese de áudio. A reprodução deve cessar sem travar o motor.',
+        engine: 'kokoro',
+        ttsSpeed: 1.0,
+        maxChunkChars: 60,
+        stripVocalTags: true
+      });
+      if (!interruptSpeak || interruptSpeak.ok !== true) {
+        throw new Error(`TTS_INTERRUPT_SPEAK_FAILED:${JSON.stringify(interruptSpeak)}`);
+      }
+      // Wait for speech to actively begin
+      await sleep(300);
       const ttsStop = await voice.stop();
-      if (!ttsStop || ttsStop.ok !== true) {
+      const isInterrupted = ttsStop?.interrupted === true || ttsStop?.android?.interrupted === true;
+      if (!ttsStop || ttsStop.ok !== true || !isInterrupted) {
         throw new Error(`TTS_STOP_FAILED:${JSON.stringify(ttsStop)}`);
       }
       await sleep(200);
       const ttsStatusAfterStop = await voice.settings();
       const afterAndroid = ttsStatusAfterStop?.tts?.android || {};
-      const speakingAfterStop = afterAndroid.speaking === true;
-      if (speakingAfterStop) {
+      if (afterAndroid.speaking === true) {
         throw new Error('TTS_INTERRUPTION_FAILED_SPEAKING_AFTER_STOP');
       }
 
@@ -326,10 +351,14 @@ export async function runR572EmulatorE2E({
         enginePackage: ttsSpeak.enginePackage,
         continuousPlaybackQueuedChunks: ttsSpeak.chunks,
         continuityVerified: Number(ttsSpeak.chunks) >= 2,
-        interruptedOk: ttsStop.ok === true,
-        wasActiveBeforeStop: ttsStop.wasActive === true || midAndroid.speaking === true,
+        multiChunkCompletedViaCallbacks: fullPlaybackCompleted,
+        completedChunksCount: finalPlaybackStatus.completedChunksCount,
+        startedChunksCount: finalPlaybackStatus.startedChunksCount,
+        chunkEvents: finalPlaybackStatus.chunkEvents,
+        separateInterruptionTested: true,
+        interruptedOk: ttsStop.ok === true && isInterrupted,
         speakingAfterStop: false,
-        lastCompletedChunk: midAndroid.currentChunkIndex || ttsStop.interruptedAtChunk || 1
+        interruptedAtChunk: ttsStop.interruptedAtChunk || ttsStop.android?.interruptedAtChunk || afterAndroid.interruptedAtChunk || 1
       };
 
       // 6. In-App Updater with GitHub Manifest Query, Package Authentication, Rollback & Real Functional OTA Patch

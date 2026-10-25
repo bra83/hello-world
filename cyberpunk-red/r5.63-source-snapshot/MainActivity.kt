@@ -149,6 +149,29 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(SceneBridge(), "AndroidScene")
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? {
+                val rawPath = request.url.path.orEmpty()
+                if (rawPath.startsWith("/assets/")) {
+                    val rel = rawPath.removePrefix("/assets/")
+                    if (!rel.contains("..")) {
+                        val activeRoot = java.io.File(filesDir, "updates/cyberpunk-red/active").canonicalFile
+                        val overrideFile = java.io.File(activeRoot, rel).canonicalFile
+                        if (overrideFile.path.startsWith(activeRoot.path) && overrideFile.isFile) {
+                            val lower = rel.lowercase()
+                            val mime = when {
+                                lower.endsWith(".html") -> "text/html"
+                                lower.endsWith(".js") || lower.endsWith(".mjs") -> "text/javascript"
+                                lower.endsWith(".css") -> "text/css"
+                                lower.endsWith(".json") -> "application/json"
+                                lower.endsWith(".png") -> "image/png"
+                                lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+                                lower.endsWith(".webp") -> "image/webp"
+                                lower.endsWith(".svg") -> "image/svg+xml"
+                                else -> "application/octet-stream"
+                            }
+                            return android.webkit.WebResourceResponse(mime, "utf-8", java.io.FileInputStream(overrideFile))
+                        }
+                    }
+                }
                 val response = assetLoader.shouldInterceptRequest(request.url) ?: return null
                 val path = request.url.path.orEmpty().lowercase()
                 // ES modules are MIME-strict in Android System WebView. Some Android MIME maps
@@ -224,7 +247,13 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        webView.loadUrl("https://appassets.androidplatform.net/assets/web/app/index.html?build=4005")
+        val e2eMode = intent?.getStringExtra("braseiro_e2e_mode")?.trim().orEmpty()
+        val startUrl = if (e2eMode.isNotEmpty()) {
+            "https://appassets.androidplatform.net/assets/web/app/index.html?build=4172&e2e=$e2eMode"
+        } else {
+            "https://appassets.androidplatform.net/assets/web/app/index.html?build=4172"
+        }
+        webView.loadUrl(startUrl)
     }
 
     override fun onDestroy() {
