@@ -4,7 +4,7 @@ from pathlib import Path
 
 root = Path(__file__).parent
 digest = hashlib.sha256()
-paths = [root/'apply.py', *sorted((root/'overlay').rglob('*'))]
+paths = [root/'apply.py',root/'patch_r574.py', *sorted((root/'overlay').rglob('*'))]
 for path in paths:
     if path.is_file():
         digest.update(path.relative_to(root).as_posix().encode())

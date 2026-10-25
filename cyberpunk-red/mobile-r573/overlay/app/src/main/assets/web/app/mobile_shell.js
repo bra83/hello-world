@@ -16,6 +16,8 @@ export function installMobileShell() {
     parent.insertBefore(details, before);
     return details;
   };
+  const identity=$('.legacy-editor');
+  if(identity){identity.classList.remove('legacy-editor');identity.classList.add('identity-editor');$('#tab-create')?.prepend(identity);}
   const nav = $('.bottom-nav');
   const sceneNav = nav?.querySelector('[data-tab="table"]');
   if (sceneNav) sceneNav.querySelector('span:last-child').textContent = 'CENA';

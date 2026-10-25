@@ -24,12 +24,14 @@ def apply(root):
             dest = root / src.relative_to(overlay)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
+    from patch_r574 import apply as apply_r574
+    apply_r574(root)
     build = root / 'app/build.gradle.kts'
     code = build.read_text(encoding='utf-8-sig')
-    if 'versionCode = 4172' not in code and 'versionCode = 4173' not in code:
+    if 'versionCode = 4172' not in code and 'versionCode = 4173' not in code and 'versionCode = 4174' not in code:
         raise RuntimeError('Expected R5.72/R5.73 source version')
-    build.write_text(code.replace('versionCode = 4172', 'versionCode = 4173').replace('versionName = "4.1.72"', 'versionName = "4.1.73"'))
-    print('R5.73 mobile UI and nonblocking bridge installed:', root)
+    build.write_text(re.sub(r'versionCode = 417[234]', 'versionCode = 4174', re.sub(r'versionName = "4\.1\.7[234]"', 'versionName = "4.1.74"', code)))
+    print('R5.74 mobile UI and nonblocking bridge installed:', root)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

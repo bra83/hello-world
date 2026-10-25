@@ -72,6 +72,12 @@ class BarbaraJsBridge(
     }
 
     @JavascriptInterface
+    fun listCharacters(): String = try { runtime.listCharacters().toString() } catch(t: Throwable) { errorJson(t) }
+
+    @JavascriptInterface
+    fun deleteCharacter(characterId: String): String = try { runtime.deleteCharacter(characterId).toString() } catch(t: Throwable) { errorJson(t) }
+
+    @JavascriptInterface
     fun getActiveId(): String = runtime.activeCharacterId().orEmpty()
 
     @JavascriptInterface

@@ -53,6 +53,8 @@
       status: async () => parse((await callNative('status')))
     },
     characters: {
+      list: async () => { const out=parse(await callNative('listCharacters')); if(out?.ok===false)throw new Error(out.error||'Falha ao listar fichas'); return out.characters||[]; },
+      remove: async (id) => parse(await callNative('deleteCharacter', id)),
       upsert: async (id, character, opts = {}) => {
         const payload = { ...character };
         if (opts && Number.isFinite(Number(opts.expectedStateVersion))) {

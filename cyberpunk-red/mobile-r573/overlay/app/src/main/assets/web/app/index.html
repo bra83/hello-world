@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="pt-BR"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><title>Cyberpunk RED — Night City • R5.73</title><link href="styles.css" rel="stylesheet"/><link href="interface_v2.css" rel="stylesheet"/><link href="mobile_shell.css" rel="stylesheet"/></head>
+<html lang="pt-BR"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/><title>Cyberpunk RED — Night City • R5.74</title><link href="styles.css" rel="stylesheet"/><link href="interface_v2.css" rel="stylesheet"/><link href="mobile_shell.css" rel="stylesheet"/></head>
 <body id="cpredMobile" data-active-tab="table"><div class="phone app-shell">
 <header class="app-header" id="mobileHeader">
 <div class="brand-lockup"><strong>CYBERPUNK <b>RED</b></strong><span>NIGHT CITY • 2045</span></div>
@@ -131,6 +131,14 @@
 </div>
 </section>
 <section class="tab" id="tab-sheet">
+<div class="panel character-manager" id="characterManager">
+<div class="panel-title">PERSONAGENS</div>
+<label>Personagem salvo<select id="characterSelect" aria-label="Personagem salvo"></select></label>
+<div class="character-actions"><button id="newCharacterBtn" type="button">Novo personagem</button><button id="saveCharacterBtn" type="button">Salvar ficha</button><button id="characterExportBtn" type="button">Exportar ficha .json</button><label class="fake-btn">Importar ficha .json<input id="characterImportFile" type="file" accept="application/json,.json"/></label><button id="deleteCharacterBtn" class="danger" type="button">Excluir personagem</button><button id="equipmentShortcutBtn" type="button">Armas e equipamentos</button><button id="editCharacterBtn" type="button">Editar nome e criação</button></div>
+<p class="rule-note" id="characterManagerStatus" aria-live="polite"></p>
+<div id="characterDeleteConfirm" class="hidden"><p id="characterDeleteMessage"></p><button id="confirmDeleteCharacterBtn" class="danger" type="button">Confirmar exclusão</button><button id="cancelDeleteCharacterBtn" type="button">Cancelar</button></div>
+</div>
+
 <div class="concept-subtabs sheet-concept-subtabs" aria-label="Seções da ficha"><button class="active" data-sheet-anchor="general" type="button">GERAL</button><button data-sheet-anchor="attributes" type="button">ATRIBUTOS</button><button data-sheet-anchor="skills" type="button">HABILIDADES</button><button data-sheet-anchor="bio" type="button">BIO</button></div>
 <div class="panel sheet-identity"><img alt="Retrato" id="sheetPortrait" src="assets/characters/razor/portrait.png"/><div><small id="sheetMethod">Pacote Completo</small><h1 id="sheetName">Razor</h1><b id="sheetRole">Solo • Grau 4</b><div class="sheet-vitals" id="sheetVitals"></div></div></div>
 <div class="panel"><div class="panel-title"><span>ATRIBUTOS</span><span>FICHA CANÔNICA</span></div><div class="sheet-stats" id="sheetStats"></div></div>
@@ -392,5 +400,5 @@ window.addEventListener('unhandledrejection',event=>window.__cpredBootFail(event
 setTimeout(()=>{if(!window.__cpredUiReady)window.__cpredBootFail(window.__cpredBootError||'Tempo limite de inicialização excedido.')},5000);
 </script>
 <script src="android_bridge_bootstrap.js"></script>
-<script>import('./app.js?build=4173').catch(window.__cpredBootFail);</script>
+<script>import('./app.js?build=4174').catch(window.__cpredBootFail);</script>
 </body></html>

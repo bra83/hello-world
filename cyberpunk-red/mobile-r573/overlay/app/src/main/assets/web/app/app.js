@@ -128,7 +128,7 @@ function renderPrompt(){
  $('#promptBox').value=`Crie um retrato de personagem para Cyberpunk RED, formato vertical 4:5, pronto para ser usado na ficha de um VTT Android.\n\nPERSONAGEM\nNome: ${character.name}\nFunção: ${getRoleLabel(character.role)}\nOrigem cultural: ${l.culturalRegion}\nPersonalidade: ${l.personality}\nEstilo de roupa: ${l.clothingStyle}\nCabelo: ${l.hairstyle}\nMarca/afetação: ${l.affectation}\nObjetivo de vida: ${l.lifeGoal}\nDetalhe da Função: ${Object.values(r||{}).slice(0,3).join('; ')}\n\nDIREÇÃO VISUAL\nRetrato semi-realista e crível, cyberpunk urbano de 2045, iluminação cinematográfica discreta, aparência de pessoa real do mundo de Night City. Não exagerar neon, hologramas ou implantes. Evitar fantasia, armaduras impossíveis e excesso de adereços. Roupa e visual devem refletir a descrição acima.\n\nENQUADRAMENTO OBRIGATÓRIO\nCabeça e parte superior do tronco; rosto bem visível; personagem aproximadamente centralizada; não cortar topo da cabeça; deixar margem lateral suficiente para que a MESMA imagem seja recortada depois em um token circular. Fundo urbano escuro simples, sem texto, sem logotipo, sem moldura.\n\nCONSISTÊNCIA PARA TOKEN\nA imagem será importada no app. O app NÃO vai gerar outro desenho: ele vai usar exatamente esta imagem para criar localmente um token 2D flat circular. Portanto, mantenha rosto, cabelo e elementos identificadores dentro da área central do retrato.\n\nFORMATO\nUma única personagem. Proporção 4:5. Sem interface, sem ficha, sem texto, sem token desenhado ao lado.`;
 }
 
-function regenerate(){syncIdentity();const oldName=character.name,method=$('#methodSelect').value,role=$('#roleSelect').value;character=createCharacter({method,role,name:oldName}); importedAsset=false; setDefaultAssets(); render();toast('Personagem gerado pelas regras');}
+function regenerate(){syncIdentity();const oldId=character.characterId,oldName=character.name,method=$('#methodSelect').value,role=$('#roleSelect').value;character=createCharacter({method,role,name:oldName});character.characterId=oldId; importedAsset=false; setDefaultAssets(); render();toast('Personagem gerado pelas regras');}
 function guidedBase(){syncIdentity();const role=$('#roleSelect').value;character=createCharacter({method:'complete',role,name:character.name}); const pr={rockerboy:['EMP','COOL'],solo:['REF','DEX'],netrunner:['INT','TECH'],tech:['TECH','INT'],medtech:['TECH','EMP'],media:['INT','COOL'],lawman:['WILL','REF'],exec:['INT','COOL'],fixer:['COOL','INT'],nomad:['MOVE','REF']}[role]; character.stats=Object.fromEntries(STATS.map(k=>[k,6])); character.stats[pr[0]]++;character.stats[pr[1]]++;character.derived=derive(character.stats);$('#methodSelect').value='complete';render();toast('Base guiada válida criada');}
 function rerollLife(){const temp=createCharacter({method:character.method,role:character.role,name:character.name});character.lifepath=temp.lifepath;character.roleLifepath=temp.roleLifepath;replaceCulturalLanguage(character.lifepath.culturalLanguage);render();toast('Caminho de Vida rolado novamente');}
 
@@ -144,10 +144,64 @@ function setDefaultAssets(){character.assets.portraitDataUrl=null;character.asse
 function applyAssets(){const p=character.assets.portraitDataUrl||'assets/characters/razor/portrait.png',t=character.assets.tokenDataUrl||'assets/characters/razor/token.png';$('#portraitImg').src=p;$('#portraitPreview').src=p;$('#tokenPreview').src=t;$('#mapToken').src=t;atlas.syncCharacter?.()}
 
 function download(name,text,type='application/json'){const b=new Blob([text],{type}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
-async function exportJson(){syncIdentity();const v=renderValidation();if(!v.ok)return toast('Corrija a ficha antes de exportar');download(`${character.name.replace(/\W+/g,'_')}.cyberpunk-red.json`,serializeCharacter(character));toast('JSON exportado')}
-async function importJson(file){try{const txt=await file.text();character=deserializeCharacter(txt); importedAsset=!!character.assets?.portraitDataUrl;applyAssets();render();toast('Ficha JSON importada e validada')}catch(e){toast(e.message)}}
-async function saveCore(){syncIdentity();const v=renderValidation();if(!v.ok)return toast('Ficha inválida');await bridge.saveCharacter(character);await bridge.bindToken(character);await bridge.snapshot(`personagem:${character.characterId}`);toast(bridge.isRealCore?'Salvo no Motor Bárbara':'Salvo no fallback local')}
-async function loadCore(){const c=await bridge.loadCharacter();if(!c)return toast('Nenhum personagem salvo');character=migrateCharacter(c);await bridge.saveCharacter(character);applyAssets();render();toast('Personagem restaurado e normalizado')}
+async function persistCharacter(c){
+ const out=await bridge.saveCharacter(c);if(out?.ok===false)throw new Error(out.error||out.reason||'Não foi possível salvar a ficha');
+ if(out?.stateVersion)c.stateVersion=out.stateVersion;
+ return out;
+}
+let rosterBusy=false;
+async function refreshCharacterRoster(){
+ const rows=await bridge.listCharacters(),select=$('#characterSelect');
+ select.replaceChildren();
+ const draft=!rows.some(c=>c.characterId===character.characterId);
+ if(draft)select.add(new Option(`${character.name} · ainda não salvo`,character.characterId));
+ for(const c of rows)select.add(new Option(c.name||'Sem nome',c.characterId));
+ select.value=character.characterId;
+ $('#characterManagerStatus').textContent=`${rows.length} personagem(ns) salvo(s)${draft?' · ficha atual em criação':''}`;
+ $('#deleteCharacterBtn').disabled=draft;
+ return rows;
+}
+async function withRosterTask(task){if(rosterBusy)return;rosterBusy=true;try{await task()}catch(e){toast(e.message);$('#characterManagerStatus').textContent=e.message}finally{rosterBusy=false}}
+async function exportJson(){
+ try{syncIdentity();const text=serializeCharacter(character),name=`${character.name.replace(/\W+/g,'_')}.cyberpunk-red.json`;
+ if(globalThis.AndroidContent?.exportCharacterJson){AndroidContent.exportCharacterJson(name,text);toast('Escolha onde salvar a ficha .json');}
+ else {download(name,text);toast('Ficha JSON exportada')}
+ }catch(e){toast(e.message)}
+}
+async function importJson(file){await withRosterTask(async()=>{
+ const c=deserializeCharacter(await file.text()),existing=await bridge.listCharacters();
+ if(existing.some(x=>x.characterId===c.characterId)){c.characterId=crypto.randomUUID();delete c.stateVersion;}
+ await persistCharacter(c);character=c;importedAsset=!!c.assets?.portraitDataUrl;applyAssets();render();await refreshCharacterRoster();toast('Ficha importada e salva');
+})}
+async function saveCore(){await withRosterTask(async()=>{syncIdentity();await persistCharacter(character);await bridge.bindToken(character);await refreshCharacterRoster();toast('Ficha salva')})}
+async function loadCore(){await withRosterTask(async()=>{const c=await bridge.loadCharacter();if(!c)throw new Error('Nenhum personagem salvo');character=migrateCharacter(c);applyAssets();render();await refreshCharacterRoster();toast('Ficha carregada')})}
+function installCharacterManager(){
+ bind('#characterSelect','change',e=>withRosterTask(async()=>{
+   const target=e.target.value;if(target===character.characterId)return;
+   syncIdentity();await persistCharacter(character);
+   const c=await bridge.loadCharacter(target);if(!c)throw new Error('Personagem não encontrado');
+   await persistCharacter(c);character=migrateCharacter(c);applyAssets();render();await refreshCharacterRoster();
+ }));
+ bind('#newCharacterBtn','click',()=>withRosterTask(async()=>{
+   syncIdentity();await persistCharacter(character);
+   const c=createCharacter({method:'complete',role:'solo',name:'Novo personagem'});await persistCharacter(c);
+   character=c;importedAsset=false;setDefaultAssets();render();await refreshCharacterRoster();activateTab('create');$('#nameInput').focus();toast('Novo personagem criado. Escolha nome, método e função.');
+ }));
+ bind('#saveCharacterBtn','click',saveCore);bind('#characterExportBtn','click',exportJson);
+ bind('#characterImportFile','change',e=>{const file=e.target.files?.[0];if(file)importJson(file);e.target.value=''});
+ bind('#editCharacterBtn','click',()=>activateTab('create'));bind('#equipmentShortcutBtn','click',()=>activateTab('inventory'));
+ bind('#deleteCharacterBtn','click',()=>{$('#characterDeleteMessage').textContent=`Excluir “${character.name}” e sua ficha salva? Exporte um JSON antes se desejar guardar uma cópia.`;$('#characterDeleteConfirm').classList.remove('hidden')});
+ bind('#cancelDeleteCharacterBtn','click',()=>$('#characterDeleteConfirm').classList.add('hidden'));
+ bind('#confirmDeleteCharacterBtn','click',()=>withRosterTask(async()=>{
+   const out=await bridge.deleteCharacter(character.characterId);if(out?.ok===false)throw new Error(out.error||'Exclusão recusada');
+   const rows=await bridge.listCharacters();character=rows.length?migrateCharacter(rows[0]):createCharacter({method:'complete',role:'solo',name:'Novo personagem'});
+   if(rows.length)await persistCharacter(character);
+   $('#characterDeleteConfirm').classList.add('hidden');applyAssets();render();await refreshCharacterRoster();toast('Personagem excluído');
+ }));
+ window.addEventListener('barbara:character-export-result',e=>toast(e.detail?.ok?'Ficha JSON salva':e.detail?.message||'Exportação cancelada'));
+ refreshCharacterRoster().catch(e=>toast(e.message));
+ document.addEventListener('barbara:character-restored',()=>refreshCharacterRoster().catch(e=>toast(e.message)));
+}
 
 async function restoreActiveCharacterOnBoot(){
   try{
@@ -488,7 +542,7 @@ restoreActiveCharacterOnBoot().finally(()=>{
 setTimeout(()=>workbench.importIncomingSceneImage?.(),350);
 window.addEventListener('barbara:shared-image-available',()=>workbench.importIncomingSceneImage?.());
 ['barbara:scene-enter','barbara:scene-exit','barbara:travel'].forEach(name=>document.addEventListener(name,()=>workbench.renderSession?.()));
-installMobileShell();
+installMobileShell();installCharacterManager();
 window.__cpredUiReady=true;console.info('[CPRED_UI_READY]');document.documentElement.classList.add('ui-ready');document.documentElement.classList.remove('ui-boot-failed');
 
 

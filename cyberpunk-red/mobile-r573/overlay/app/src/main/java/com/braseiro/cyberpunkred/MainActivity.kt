@@ -51,6 +51,22 @@ class MainActivity : AppCompatActivity() {
         fileCallback = null
     }
 
+    private var pendingCharacterExport: String? = null
+    private val characterExporter = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val text = pendingCharacterExport
+        pendingCharacterExport = null
+        if (uri == null || text == null) {
+            dispatchContentEvent("barbara:character-export-result", JSONObject().put("ok", false).put("message", "Exportação cancelada."))
+        } else lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) { contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(text) } ?: error("Destino indisponível") }
+                dispatchContentEvent("barbara:character-export-result", JSONObject().put("ok", true))
+            } catch (error: Exception) {
+                dispatchContentEvent("barbara:character-export-result", JSONObject().put("ok", false).put("message", error.message))
+            }
+        }
+    }
+
     // Native image picker used by the scene workflow. Relying only on the WebView
     // <input type=file> path was unreliable on several Android providers and did not
     // emit the same event used by ACTION_SEND imports.
@@ -107,6 +123,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         runtime = BarbaraRuntime(applicationContext)
+        // Old web overrides must not undo a newer APK's UI/bridge fixes. Preserve them for recovery.
+        val overlay = java.io.File(filesDir, "updates/cyberpunk-red/active")
+        val manifest = java.io.File(overlay, "manifest.json")
+        if (overlay.isDirectory) {
+            val installedBase = runCatching { JSONObject(manifest.readText()).optInt("installedBaseVersionCode", 0) }.getOrDefault(0)
+            if (installedBase != BuildConfig.VERSION_CODE) {
+                if (!overlay.renameTo(java.io.File(overlay.parentFile, "archived-before-apk-${BuildConfig.VERSION_CODE}-${System.currentTimeMillis()}"))) android.util.Log.w("CPRED_UPDATER", "Pacote antigo será ignorado; não foi possível arquivar")
+            }
+        }
         webView = findViewById(R.id.webView)
         diceOverlay = findViewById(R.id.diceOverlay)
         // R5.46: Android 15/16 enforce edge-to-edge for recent target SDKs. Apply the
@@ -121,7 +146,7 @@ class MainActivity : AppCompatActivity() {
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             view.setPadding(0, bars.top, 0, bars.bottom)
-            insets
+            WindowInsetsCompat.CONSUMED
         }
         ViewCompat.requestApplyInsets(root)
         captureIncomingImage(intent)
@@ -163,7 +188,9 @@ class MainActivity : AppCompatActivity() {
                     if (!rel.contains("..")) {
                         val activeRoot = java.io.File(filesDir, "updates/cyberpunk-red/active").canonicalFile
                         val overrideFile = java.io.File(activeRoot, rel).canonicalFile
-                        if (overrideFile.path.startsWith(activeRoot.path) && overrideFile.isFile) {
+                        val manifestFile = java.io.File(activeRoot, "manifest.json")
+                        val compatible = runCatching { JSONObject(manifestFile.readText()).optInt("installedBaseVersionCode", 0) == BuildConfig.VERSION_CODE }.getOrDefault(false)
+                        if (compatible && overrideFile.path.startsWith(activeRoot.path + java.io.File.separator) && overrideFile.isFile) {
                             val lower = rel.lowercase()
                             val mime = when {
                                 lower.endsWith(".html") -> "text/html"
@@ -411,6 +438,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private inner class ContentImportBridge {
+        @JavascriptInterface
+        fun exportCharacterJson(name: String, text: String): String {
+            require(text.toByteArray(Charsets.UTF_8).size <= 16 * 1024 * 1024) { "Ficha muito grande" }
+            JSONObject(text)
+            runOnUiThread {
+                if (pendingCharacterExport == null) {
+                    pendingCharacterExport = text
+                    characterExporter.launch(name.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(120))
+                }
+            }
+            return "{\"ok\":true}"
+        }
+
         @JavascriptInterface
         fun pickRuleDocuments(): String {
             runOnUiThread { ruleDocumentPicker.launch(arrayOf("application/pdf")) }
