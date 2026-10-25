@@ -179,3 +179,7 @@ body#cpredMobile .identity-editor .identity{display:grid!important;gap:10px!impo
 body#cpredMobile #tab-atlas #atlasTiles{filter:none!important}
 body#cpredMobile .character-manager .fake-btn{display:flex!important;align-items:center!important;justify-content:center!important;min-height:44px!important;padding:8px!important;font-size:12px!important;text-align:center!important}
 body#cpredMobile #tab-atlas .atlas-toolbar select,body#cpredMobile #tab-table .adventure-start-controls select,body#cpredMobile #tab-create .identity input,body#cpredMobile #tab-create .identity select{font-size:16px!important;line-height:1.4!important;height:auto!important;min-height:46px!important;padding:8px 26px 8px 10px!important}
+body#cpredMobile #tab-inventory .equipment-card{grid-template-columns:86px minmax(0,1fr)!important;gap:10px!important;align-items:start!important}
+body#cpredMobile #tab-inventory .equipment-card>.equipment-actions,body#cpredMobile #tab-inventory .equipment-card>button{grid-column:1 / -1!important;max-width:none!important;width:100%!important;height:auto!important;min-height:44px!important}
+body#cpredMobile #tab-inventory .equipment-actions{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:6px!important}
+body#cpredMobile #tab-inventory .equipment-actions button{flex:1 1 100px!important;min-height:44px!important;font-size:12px!important;height:auto!important;padding:8px!important}

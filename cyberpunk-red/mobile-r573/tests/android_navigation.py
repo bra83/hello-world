@@ -135,7 +135,8 @@ tap('Excluir personagem');tap('Confirmar exclusão');wait_count(2)
 root=hierarchy();labels={'CENA','FICHA','MAPA','COMBATE','MENU'};bounds=[]
 for n in root.iter('node'):
     text=(n.get('text','') or n.get('content-desc','')).strip().upper()
-    if any(re.search(r'(^|\W)'+label+r'($|\W)',text) for label in labels):
+    nav_label=re.sub(r'^[^A-ZÀ-Ü0-9]+','',text)
+    if nav_label in labels:
         b=list(map(int,re.findall(r'\d+',n.get('bounds',''))))
         if len(b)==4 and b[3]>b[1] and b[1]>1000:bounds.append(b)
 density=int(re.findall(r'\d+',adb('shell','wm','density'))[-1])/160

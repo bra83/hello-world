@@ -21,6 +21,9 @@ const base=process.env.CPRED_TEST_URL||'http://127.0.0.1:8091/cyberpunk-current/
  await page.locator('#characterImportFile').setInputFiles({name:'Vesper.json',mimeType:'application/json',buffer:Buffer.from(content)});
  await page.waitForFunction(()=>document.querySelector('#characterManagerStatus').textContent.includes('3 personagem'));
  const imported=await page.locator('#characterSelect').inputValue();assert.notEqual(imported,second);
+ await page.locator('#deleteCharacterBtn').click();await page.locator('#characterSelect').selectOption(second);
+ await page.waitForFunction(id=>document.querySelector('#characterSelect').value===id&&document.querySelector('#characterDeleteConfirm').classList.contains('hidden'),second);
+ await page.locator('#characterSelect').selectOption(imported);await page.waitForFunction(id=>localStorage.getItem('barbara.demo.character.active')===id,imported);
  await page.locator('#deleteCharacterBtn').click();await page.locator('#cancelDeleteCharacterBtn').click();assert.equal(await page.locator('#characterSelect option').count(),3);
  await page.locator('#deleteCharacterBtn').click();await page.locator('#confirmDeleteCharacterBtn').click();await page.waitForFunction(()=>document.querySelector('#characterManagerStatus').textContent.includes('2 personagem'));
  assert.equal(await page.locator(`#characterSelect option[value="${imported}"]`).count(),0);
@@ -31,6 +34,7 @@ const base=process.env.CPRED_TEST_URL||'http://127.0.0.1:8091/cyberpunk-current/
  await page.locator('#equipmentShortcutBtn').click();await page.locator('#inventoryCategory').selectOption('weapon');
  await page.waitForFunction(()=>[...document.querySelectorAll('#inventoryCatalog img.equipment-art')].filter(x=>x.complete&&x.naturalWidth>0).length>=3);
  const images=await page.locator('#inventoryCatalog img.equipment-art').evaluateAll(xs=>xs.slice(0,8).map(x=>({w:x.naturalWidth,box:x.getBoundingClientRect().width,src:x.getAttribute('src')})));
+ const overlap=await page.locator('#inventoryCatalog .equipment-card').first().evaluate(c=>c.querySelector('.equipment-visual').getBoundingClientRect().right>c.querySelector('.equipment-copy').getBoundingClientRect().left);assert.equal(overlap,false,'equipment image overlaps its description');
  assert.ok(images.every(x=>x.w>0&&x.box>=70),JSON.stringify(images));
  for(const width of [360,412,768]){
  await page.setViewportSize({width,height:823});

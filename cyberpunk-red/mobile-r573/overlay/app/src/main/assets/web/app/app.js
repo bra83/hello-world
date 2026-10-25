@@ -130,7 +130,7 @@ function renderPrompt(){
 }
 
 function regenerate(){syncIdentity();const oldId=character.characterId,oldName=character.name,method=$('#methodSelect').value,role=$('#roleSelect').value;character=createCharacter({method,role,name:oldName});character.characterId=oldId; importedAsset=false; setDefaultAssets(); render();toast('Personagem gerado pelas regras');}
-function guidedBase(){syncIdentity();const role=$('#roleSelect').value;character=createCharacter({method:'complete',role,name:character.name}); const pr={rockerboy:['EMP','COOL'],solo:['REF','DEX'],netrunner:['INT','TECH'],tech:['TECH','INT'],medtech:['TECH','EMP'],media:['INT','COOL'],lawman:['WILL','REF'],exec:['INT','COOL'],fixer:['COOL','INT'],nomad:['MOVE','REF']}[role]; character.stats=Object.fromEntries(STATS.map(k=>[k,6])); character.stats[pr[0]]++;character.stats[pr[1]]++;character.derived=derive(character.stats);$('#methodSelect').value='complete';render();toast('Base guiada válida criada');}
+function guidedBase(){syncIdentity();const oldId=character.characterId,role=$('#roleSelect').value;character=createCharacter({method:'complete',role,name:character.name});character.characterId=oldId; const pr={rockerboy:['EMP','COOL'],solo:['REF','DEX'],netrunner:['INT','TECH'],tech:['TECH','INT'],medtech:['TECH','EMP'],media:['INT','COOL'],lawman:['WILL','REF'],exec:['INT','COOL'],fixer:['COOL','INT'],nomad:['MOVE','REF']}[role]; character.stats=Object.fromEntries(STATS.map(k=>[k,6])); character.stats[pr[0]]++;character.stats[pr[1]]++;character.derived=derive(character.stats);$('#methodSelect').value='complete';render();toast('Base guiada válida criada');}
 function rerollLife(){const temp=createCharacter({method:character.method,role:character.role,name:character.name});character.lifepath=temp.lifepath;character.roleLifepath=temp.roleLifepath;replaceCulturalLanguage(character.lifepath.culturalLanguage);render();toast('Caminho de Vida rolado novamente');}
 
 async function imageToAssets(file){
@@ -151,6 +151,7 @@ async function persistCharacter(c){
  return out;
 }
 let rosterBusy=false;
+let pendingDeleteCharacterId=null;
 async function refreshCharacterRoster(){
  const rows=await bridge.listCharacters(),select=$('#characterSelect');
  select.replaceChildren();
@@ -179,6 +180,7 @@ async function saveCore(){await withRosterTask(async()=>{syncIdentity();await pe
 async function loadCore(){await withRosterTask(async()=>{const c=await bridge.loadCharacter();if(!c)throw new Error('Nenhum personagem salvo');character=migrateCharacter(c);applyAssets();render();await refreshCharacterRoster();toast('Ficha carregada')})}
 function installCharacterManager(){
  bind('#characterSelect','change',e=>withRosterTask(async()=>{
+   pendingDeleteCharacterId=null;$('#characterDeleteConfirm').classList.add('hidden');
    const target=e.target.value;if(target===character.characterId)return;
    syncIdentity();await persistCharacter(character);
    const c=await bridge.loadCharacter(target);if(!c)throw new Error('Personagem não encontrado');
@@ -192,13 +194,14 @@ function installCharacterManager(){
  bind('#saveCharacterBtn','click',saveCore);bind('#characterExportBtn','click',exportJson);
  bind('#characterImportFile','change',e=>{const file=e.target.files?.[0];if(file)importJson(file);e.target.value=''});
  bind('#editCharacterBtn','click',()=>activateTab('create'));bind('#equipmentShortcutBtn','click',()=>activateTab('inventory'));
- bind('#deleteCharacterBtn','click',()=>{$('#characterDeleteMessage').textContent=`Excluir “${character.name}” e sua ficha salva? Exporte um JSON antes se desejar guardar uma cópia.`;$('#characterDeleteConfirm').classList.remove('hidden')});
- bind('#cancelDeleteCharacterBtn','click',()=>$('#characterDeleteConfirm').classList.add('hidden'));
+ bind('#deleteCharacterBtn','click',()=>{pendingDeleteCharacterId=character.characterId;$('#characterDeleteMessage').textContent=`Excluir “${character.name}” e sua ficha salva? Exporte um JSON antes se desejar guardar uma cópia.`;$('#characterDeleteConfirm').classList.remove('hidden')});
+ bind('#cancelDeleteCharacterBtn','click',()=>{pendingDeleteCharacterId=null;$('#characterDeleteConfirm').classList.add('hidden')});
  bind('#confirmDeleteCharacterBtn','click',()=>withRosterTask(async()=>{
-   const out=await bridge.deleteCharacter(character.characterId);if(out?.ok===false)throw new Error(out.error||'Exclusão recusada');
+   if(!pendingDeleteCharacterId||pendingDeleteCharacterId!==character.characterId){$('#characterDeleteConfirm').classList.add('hidden');throw new Error('O personagem mudou. Confirme a exclusão novamente.')}
+   const out=await bridge.deleteCharacter(pendingDeleteCharacterId);if(out?.ok===false)throw new Error(out.error||'Exclusão recusada');
    const rows=await bridge.listCharacters();character=rows.length?migrateCharacter(rows[0]):createCharacter({method:'complete',role:'solo',name:'Novo personagem'});
    if(rows.length)await persistCharacter(character);
-   $('#characterDeleteConfirm').classList.add('hidden');applyAssets();render();await refreshCharacterRoster();toast('Personagem excluído');
+   pendingDeleteCharacterId=null;$('#characterDeleteConfirm').classList.add('hidden');applyAssets();render();await refreshCharacterRoster();toast('Personagem excluído');
  }));
  window.addEventListener('barbara:character-export-result',e=>toast(e.detail?.ok?'Ficha JSON salva':e.detail?.message||'Exportação cancelada'));
  refreshCharacterRoster().catch(e=>toast(e.message));
