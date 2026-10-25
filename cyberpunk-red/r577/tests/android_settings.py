@@ -1,0 +1,56 @@
+"""Run retained native regression, then save model IDs through the real Android UI."""
+from pathlib import Path
+exec(compile((Path(__file__).parents[2]/'r575/tests/android_navigation.py').read_text(),'android_navigation.py','exec'))
+import xml.etree.ElementTree as ET
+
+
+def settings_page():
+    tap('MENU');tap('CONFIGURAÇÕES');time.sleep(1)
+
+
+def text_model_field():
+    for _ in range(8):
+        tree=hierarchy()
+        candidates=[n for n in tree.iter('node') if n.get('class')=='android.widget.EditText' and (n.get('text','').startswith('gemini-') or n.get('text','').startswith('models/'))]
+        if candidates:return candidates[0]
+        adb('shell','input','swipe','500','600','500','1300','300');time.sleep(.3)
+    raise AssertionError('Text model edit control not visible')
+
+
+def enter_model(model):
+    n=text_model_field();x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')))
+    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+    adb('shell','input','keyevent','KEYCODE_MOVE_END')
+    adb('shell','input','keycombination','113','29')  # CTRL+A
+    adb('shell','input','text',model);adb('shell','input','keyevent','KEYCODE_BACK')
+    for _ in range(10):
+        xml=ET.tostring(hierarchy(),encoding='unicode')
+        candidates=[n for n in hierarchy().iter('node') if 'SALVAR MODELOS/VOZ' in n.get('text','')]
+        if any((lambda b:len(b)==4 and b[3]>b[1] and b[2]>b[0])(list(map(int,re.findall(r'\d+',n.get('bounds',''))))) for n in candidates):break
+        adb('shell','input','swipe','500','1350','500','550','300');time.sleep(.2)
+    tap('SALVAR MODELOS/VOZ')
+
+
+def saved_model():
+    xml=adb('exec-out','run-as',package,'cat','shared_prefs/cpred-secure-runtime.xml')
+    return next(n.text for n in ET.fromstring(xml) if n.get('name')=='gemini_text_model')
+
+settings_page()
+# Prefixed IDs previously fell back silently to the previous setting.
+enter_model('models/gemini-2.5-flash')
+for _ in range(30):
+    if saved_model()=='gemini-2.5-flash':break
+    time.sleep(.5)
+else:raise AssertionError('Native save silently reverted prefixed model')
+adb('shell','am','force-stop',package);adb('shell','am','start','-n',package+'/.MainActivity')
+settings_page();assert text_model_field().get('text')=='gemini-2.5-flash'
+# The legacy migration flag must never undo an explicit user save of this ID.
+enter_model('gemini-2.5-flash-lite')
+for _ in range(30):
+    if saved_model()=='gemini-2.5-flash-lite':break
+    time.sleep(.5)
+else:raise AssertionError('Native save did not persist explicit legacy model')
+adb('shell','am','force-stop',package);adb('shell','am','start','-n',package+'/.MainActivity')
+settings_page();assert text_model_field().get('text')=='gemini-2.5-flash-lite'
+(out/'settings-persisted-after-reopen.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
+print('PASS: real Android text-model save, models/ normalization, SharedPreferences readback, explicit legacy ID retained and two force-stop/reopen cycles',flush=True)
