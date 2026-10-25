@@ -28,6 +28,7 @@ jobs:
           echo '7c0735fdf0c24f107dd878cfd5332caf4424c1148ab975be582ea7417d3d2c24  base.zip' | sha256sum --check
           python -c "import zipfile; zipfile.ZipFile('base.zip').extractall('build-source')"
           python cyberpunk-red/mobile-r573/apply.py build-source/android
+          rm -f build-source/android/local.properties
       - name: Rules regression
         run: node --test cyberpunk-red/adventure-engine/tests/*.test.mjs
       - name: Install browser for real click tests
