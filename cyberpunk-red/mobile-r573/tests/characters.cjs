@@ -12,6 +12,7 @@ const base=process.env.CPRED_TEST_URL||'http://127.0.0.1:8091/cyberpunk-current/
  const original=await page.locator('#characterSelect').inputValue();
  await page.locator('#newCharacterBtn').click();await page.waitForFunction(()=>document.body.dataset.activeTab==='create');
  assert.equal(await page.locator('#nameInput').isVisible(),true);
+ await page.locator('#methodSelect').selectOption('streetrat');await page.locator('#roleSelect').selectOption('tech');await page.locator('#guidedBtn').click();
  await page.locator('#nameInput').fill('Vesper');await sheet();await page.locator('#saveCharacterBtn').click();
  await page.waitForFunction(()=>document.querySelector('#characterSelect').selectedOptions[0].text==='Vesper');
  const second=await page.locator('#characterSelect').inputValue();assert.notEqual(second,original);
