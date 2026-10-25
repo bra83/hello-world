@@ -27,6 +27,7 @@
   };
   const pending = new Map();
   let requestId = 0;
+  const requestSession = globalThis.crypto?.randomUUID?.() || (Date.now().toString(36) + Math.random().toString(36));
   globalThis.__braseiroNativeReply = (id, raw) => {
     const resolve = pending.get(id);
     if (!resolve) return;
@@ -37,7 +38,7 @@
     if (typeof AndroidBarbara.request !== 'function') {
       return Promise.resolve(JSON.stringify({ok:false,resolved:false,error:'NATIVE_BRIDGE_UPGRADE_REQUIRED'}));
     }
-    const id = String(++requestId);
+    const id = requestSession + ":" + String(++requestId);
     return new Promise(resolve => {
       pending.set(id, resolve);
       try { AndroidBarbara.request(id, method, JSON.stringify(args)); }
