@@ -29,6 +29,17 @@ def tap(label):
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError):
             time.sleep(1)
             continue
+        # AOSP Quickstep occasionally ANRs during cold emulator boot. Dismiss only
+        # that external launcher dialog; a Cyberpunk ANR must still fail this test.
+        dialog_text=' '.join(n.get('text','') for n in root.iter('node'))
+        if ("Quickstep isn't responding" in dialog_text or "Launcher3 isn't responding" in dialog_text):
+            close=next((n for n in root.iter('node') if n.get('resource-id')=='android:id/aerr_close'),None)
+            if close is not None:
+                x1,y1,x2,y2=map(int,re.findall(r'\d+',close.get('bounds')))
+                adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+                print('Dismissed external Quickstep ANR; Cyberpunk ANRs remain fatal',flush=True)
+                time.sleep(1)
+                continue
         def matches_label(node):
             name=re.sub(r'\s+', ' ', node.get('text', '') or node.get('content-desc', '')).strip().upper()
             wanted=label.upper()

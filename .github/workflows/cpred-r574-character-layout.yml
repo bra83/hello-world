@@ -61,11 +61,29 @@ jobs:
           packages: platform-tools
       - name: Install Android platform
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Fingerprint compiled sources
+        id: fingerprint
+        run: echo "sha=$(python cyberpunk-red/mobile-r573/source_fingerprint.py)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: apkcache
+        with:
+          path: |
+            build-source/android/app/build/outputs/apk/debug/app-debug.apk
+            android-build.log
+          key: cpred-r574-apk-${{ steps.fingerprint.outputs.sha }}
       - name: Compile Android APK
+        if: steps.apkcache.outputs.cache-hit != 'true'
         working-directory: build-source/android
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug --stacktrace 2>&1 | tee ../../android-build.log
+      - uses: actions/cache/save@v4
+        if: steps.apkcache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            build-source/android/app/build/outputs/apk/debug/app-debug.apk
+            android-build.log
+          key: cpred-r574-apk-${{ steps.fingerprint.outputs.sha }}
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
