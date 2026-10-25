@@ -38,7 +38,9 @@ jobs:
           python cyberpunk-red/r578/apply.py build-source/android
           rm -f build-source/android/local.properties
       - name: Full opening contract and engine publication boundary
-        run: python cyberpunk-red/r578/tests/opening.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl /tmp/cpred577-baseline.whl | tee opening.log
+        run: |
+          python cyberpunk-red/r578/tests/opening.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl /tmp/cpred577-baseline.whl | tee opening.log
+          node cyberpunk-red/r578/tests/opening_ui.mjs "$PWD/build-source/android" | tee opening-ui.log
       - name: Rules regression
         run: node --test cyberpunk-red/adventure-engine/tests/*.test.mjs
       - name: Retain persistence and failure recovery regressions
@@ -131,7 +133,7 @@ jobs:
           cd build-source
           zip -qr ../deliverables/CYBERPUNK_RED_4.1.78_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/.kotlin/*'
           cd ..
-          cp navigation.log android-build.log characters.log narrative.log opening.log settings-ui.log state-budget.log start-failure.log failure-status.log grounding-ui.log deliverables/
+          cp navigation.log android-build.log characters.log narrative.log opening.log opening-ui.log settings-ui.log state-budget.log start-failure.log failure-status.log grounding-ui.log deliverables/
           cp -r evidence deliverables/
           cd deliverables
           zip -qr CYBERPUNK_RED_4.1.78_EVIDENCIAS.zip evidence
