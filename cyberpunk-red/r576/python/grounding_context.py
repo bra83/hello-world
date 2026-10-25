@@ -41,7 +41,7 @@ def public_fact_sources(state, evidence, context=None):
             raise ValueError('invalid_public_context')
         context = public_view(context)
         # These are the exact trusted projections supplied by narrator_context.
-        for key in ('location', 'site', 'public_ledger', 'npcs'):
+        for key in ('location', 'site', 'public_ledger', 'npcs', 'game_time', 'world_state_for_dramatization', 'player_public'):
             if key in context:
                 sources.extend(records(context[key], LABELS.get(key, key)))
         scene = context.get('scene_context')
@@ -69,3 +69,19 @@ def supports_public_fact(claim, sources):
     # different location, number, NPC, polarity or combination of source records.
     normalize=lambda text: ' '.join(str(text).casefold().split())
     return normalize(claim) in {normalize(source) for source in sources}
+
+
+def active_player_public(state):
+    """Minimal identity from the persisted host character, never from user_input.
+
+    No inventory, session narration, NPC registries, adventure secrets or raw
+    living-world/director state is promoted into the factual context.
+    """
+    player=getattr(state,'player_state',{})
+    if not isinstance(player,dict):return {}
+    active=player.get('activeCharacterId');characters=player.get('characters',{})
+    if not isinstance(active,str) or not isinstance(characters,dict):return {}
+    matches=[c for c in characters.values() if isinstance(c,dict) and c.get('characterId')==active and not c.get('deleted')]
+    if len(matches)!=1:return {}
+    character=public_view(matches[0])
+    return {key:character[key] for key in ('name','role') if isinstance(character.get(key),str)}

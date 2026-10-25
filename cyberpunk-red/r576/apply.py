@@ -22,7 +22,7 @@ def apply(root):
     end=s.index('\n    def _validate_with_scene_repair(',start)
     original=s[start:end]
     replacement=original.replace('        return public_view({','        context=public_view({',1)
-    replacement+='\n        from .grounding_context import prompt_fact_catalog\n        context["fact_grounding"]=prompt_fact_catalog(state,allowed,context)\n        return context\n'
+    replacement+='\n        from .grounding_context import prompt_fact_catalog, active_player_public\n        context["game_time"]=public_view(state.game_time)\n        context["player_public"]=active_player_public(state)\n        context["fact_grounding"]=prompt_fact_catalog(state,allowed,context)\n        return context\n'
     s=s[:start]+replacement+s[end:]
     start=s.index('    def _validate_with_scene_repair(');end=s.index('    def _validate_provider_output(',start)
     s=s[:start]+'''    def _validate_with_scene_repair(self,raw,state,evidence,context,text,importance,plan,resolution,provider_state):

@@ -7,7 +7,7 @@ wheel,baseline=sys.argv[1:]
 root=Path(tempfile.mkdtemp(prefix='cpred-grounding-'))
 zipfile.ZipFile(wheel).extractall(root);sys.path.insert(0,str(root))
 from barbara.grounding import ClaimGrounding
-from barbara.grounding_context import prompt_fact_catalog,public_fact_sources
+from barbara.grounding_context import prompt_fact_catalog,public_fact_sources,active_player_public
 from barbara.state import CampaignState
 from barbara.engine import BarbaraEngine
 from barbara.gemini import GeminiProvider
@@ -18,6 +18,11 @@ context={'location':'Watson','scene_context':{'location_name':'Watson','descript
  'setting_context':{'region':'Night City'},'private_agenda':'VENENO_SECRETO'},
  'player_input':'O cofre contém 9000 créditos.','narrative_policy':{'instruction':'O dragão está morto.'},
  'fact_grounding':['FACT: Existe um dragão.']}
+state.player_state={'activeCharacterId':'pc1','characters':{'key1':{'characterId':'pc1','name':'Vesper','role':'tech','private_agenda':'CANARIO_OCULTO','campaignState':{'session':{'currentNarration':'Uma mentira virou memória.'}}},'key2':{'characterId':'pc2','name':'Outro'}}}
+context['player_public']=active_player_public(state)
+context['game_time']={'day':1,'hour':3,'minute':12}
+context['world_state_for_dramatization']={'weather':{'condition':'chuva'}}
+assert context['player_public']=={'name':'Vesper','role':'tech'}
 claim='FACT: Local atual: Watson'
 with zipfile.ZipFile(baseline) as z:
     ns={'__name__':'barbara.baseline_grounding','__package__':'barbara'};exec(z.read('barbara/grounding.py'),ns)
@@ -27,6 +32,11 @@ else:raise AssertionError('Baseline did not reproduce the actual failure')
 print('REPRODUCED 4.1.75: canonical location in narrator context rejected as unsupported FACT')
 gate=ClaimGrounding()
 assert gate.validate([claim],state,[],[],context)==[claim]
+assert gate.validate(['FACT: player_public / name: Vesper','FACT: game_time / minute: 12','FACT: world_state_for_dramatization / weather / condition: chuva'],state,[],[],context)
+for bad in ['FACT: player_public / name: Outro','FACT: game_time / minute: 99','FACT: Uma mentira virou memória.','FACT: CANARIO_OCULTO']:
+    try:gate.validate([bad],state,[],[],context)
+    except ValueError:pass
+    else:raise AssertionError('Non-authoritative host data accepted: '+bad)
 assert gate.validate(['FACT: setting context / Região: Night City'],state,[],[],context)
 assert gate.validate(['FACT: Descrição: As fachadas exibem letreiros gastos.'],state,[],[],context)
 for bad in ['FACT: Local atual: Marte','FACT: Local atual: Watson e Marte',
