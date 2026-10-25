@@ -259,13 +259,21 @@ export async function runR572EmulatorE2E({
 
       // 5. TTS Universal V3 with Installed Sherpa/Kokoro on Emulator (Multi-Chunk Playback to Completion via Callbacks & Separate Interruption)
       const voice = globalThis.MotorBarbaraCore?.voice;
+      const ttsCfgInitial = await voice.settings();
+      const installedEngines = ttsCfgInitial.installedEngines || ttsCfgInitial.installedTtsEngines || [];
+      const k2fsaEngine = installedEngines.find(e => {
+        const p = e.packageName || e.name || '';
+        return p === 'com.k2fsa.sherpa.onnx.tts.engine' || p === 'com.k2fsa.sherpa.onnx.tts.engine.debug';
+      });
+      const targetKokoroPkg = k2fsaEngine ? (k2fsaEngine.packageName || k2fsaEngine.name) : 'com.k2fsa.sherpa.onnx.tts.engine';
+
       const ttsSave = await voice.saveSettings({
         textModel: 'gemini-3.8-flash',
         ttsModel: 'gemini-3.8-flash-tts',
         voice: 'Fenrir',
         language: 'pt-BR',
         ttsEngine: 'kokoro',
-        androidEnginePackage: 'com.braseiro.kokoro.ptbr',
+        androidEnginePackage: targetKokoroPkg,
         voiceStyle: 'Noir cyberpunk tenso e cinematográfico',
         voiceProfile: 'Mestre veterano de Night City',
         ttsSpeed: 1.25,
@@ -273,7 +281,6 @@ export async function runR572EmulatorE2E({
         stripVocalTags: true
       });
       const ttsCfgBefore = await voice.settings();
-      const installedEngines = ttsCfgBefore.installedEngines || ttsCfgBefore.installedTtsEngines || [];
       if (!installedEngines.length || !ttsCfgBefore.kokoroInstalled) {
         throw new Error(`TTS_NO_INSTALLED_ENGINE:installed=${installedEngines.length},kokoro=${ttsCfgBefore.kokoroInstalled}`);
       }
@@ -286,14 +293,18 @@ export async function runR572EmulatorE2E({
       const ttsSpeak = await voice.speak({
         text: multiChunkText,
         engine: 'kokoro',
+        androidEnginePackage: targetKokoroPkg,
         ttsSpeed: 1.25,
         maxChunkChars: 90,
         stripVocalTags: true
       });
 
-      // STRICT validation: speakOk MUST be true
+      // STRICT validation: speakOk MUST be true and enginePackage must preserve targetKokoroPkg without silent substitution
       if (!ttsSpeak || ttsSpeak.ok !== true) {
         throw new Error(`TTS_SPEAK_FAILED:speakOk=${ttsSpeak?.ok},err=${ttsSpeak?.error}`);
+      }
+      if (ttsSpeak.enginePackage !== targetKokoroPkg) {
+        throw new Error(`TTS_SILENT_SUBSTITUTION_DETECTED:expected=${targetKokoroPkg},actual=${ttsSpeak.enginePackage}`);
       }
       if (Number(ttsSpeak.chunks || 0) < 2) {
         throw new Error(`TTS_CONTINUOUS_PLAYBACK_CHUNKS_NOT_SPLIT:chunks=${ttsSpeak.chunks}`);
@@ -321,6 +332,7 @@ export async function runR572EmulatorE2E({
       const interruptSpeak = await voice.speak({
         text: 'Este é um teste isolado de interrupção imediata da síntese de áudio. A reprodução deve cessar sem travar o motor.',
         engine: 'kokoro',
+        androidEnginePackage: targetKokoroPkg,
         ttsSpeed: 1.0,
         maxChunkChars: 60,
         stripVocalTags: true

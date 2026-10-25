@@ -139,10 +139,11 @@ test('r572_e2e_harness executes full multi-chunk callback playback to completion
     saveSettings: async () => ({ ok: true }),
     speak: async (opts) => {
       speakCalls++;
+      const enginePackage = opts?.androidEnginePackage || 'com.k2fsa.sherpa.onnx.tts.engine';
       if (speakCalls === 1) {
-        return { ok: true, engine: 'kokoro', enginePackage: 'com.braseiro.kokoro.ptbr', chunks: 3 };
+        return { ok: true, engine: 'kokoro', enginePackage, chunks: 3 };
       }
-      return { ok: true, engine: 'kokoro', enginePackage: 'com.braseiro.kokoro.ptbr', chunks: 2 };
+      return { ok: true, engine: 'kokoro', enginePackage, chunks: 2 };
     },
     stop: async () => ({ ok: true, interrupted: true, wasActive: true, speakingAfterStop: false, interruptedAtChunk: 1 })
   };

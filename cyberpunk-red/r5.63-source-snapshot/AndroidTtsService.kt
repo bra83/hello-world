@@ -26,9 +26,9 @@ class AndroidTtsService(private val context: Context) {
         const val TAG = "CPRED_TTS"
 
         val KOKORO_PACKAGES = listOf(
-            "com.braseiro.kokoro.ptbr",
             "com.k2fsa.sherpa.onnx.tts.engine",
             "com.k2fsa.sherpa.onnx.tts.engine.debug",
+            "com.braseiro.kokoro.ptbr",
             "com.braseiro.kokoro.tts",
         )
 
@@ -167,24 +167,22 @@ class AndroidTtsService(private val context: Context) {
     @Synchronized
     fun ensureEnginePackage(requestedPackage: String?): Boolean {
         val rawTarget = requestedPackage?.trim()?.takeIf { it.isNotEmpty() }
-        val kokoroInstalledPkg = detectKokoroPackage()
-        val target = when {
-            rawTarget == null -> null
-            rawTarget in KOKORO_PACKAGES && kokoroInstalledPkg != null -> kokoroInstalledPkg
-            else -> rawTarget
-        }
+        // Preserve explicit selection strictly without silent substitution
+        val target = rawTarget ?: detectKokoroPackage()
         if (target != activeEnginePackage || !ready) {
             runCatching { tts.stop() }
             runCatching { tts.shutdown() }
             tts = createEngine(target)
         }
         if (awaitReady()) return true
-        if (target != null) {
-            val fallbackPkg = if (kokoroInstalledPkg != null && kokoroInstalledPkg != target) kokoroInstalledPkg else null
-            runCatching { tts.stop() }
-            runCatching { tts.shutdown() }
-            tts = createEngine(fallbackPkg)
-            if (awaitReady()) return true
+        if (rawTarget == null) {
+            val fallbackPkg = detectKokoroPackage()
+            if (fallbackPkg != null && fallbackPkg != target) {
+                runCatching { tts.stop() }
+                runCatching { tts.shutdown() }
+                tts = createEngine(fallbackPkg)
+                if (awaitReady()) return true
+            }
         }
         return ready
     }

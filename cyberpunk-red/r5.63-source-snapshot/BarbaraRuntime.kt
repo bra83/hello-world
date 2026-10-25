@@ -530,11 +530,10 @@ class BarbaraRuntime(private val context: Context) {
     fun saveGeminiSettings(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
         val requestedEngine = payload.optString("ttsEngine").takeIf { it.isNotBlank() }
         val kokoroPkg = androidTtsService.detectKokoroPackage()
-        val rawPkg = if (payload.has("androidEnginePackage")) payload.optString("androidEnginePackage") else null
+        val rawPkg = if (payload.has("androidEnginePackage")) payload.optString("androidEnginePackage").trim().takeIf { it.isNotBlank() } else null
         val effectiveAndroidPkg = when {
-            requestedEngine?.lowercase() == "kokoro" && kokoroPkg != null -> kokoroPkg
-            rawPkg != null && rawPkg in AndroidTtsService.KOKORO_PACKAGES && kokoroPkg != null -> kokoroPkg
             rawPkg != null -> rawPkg
+            requestedEngine?.lowercase() == "kokoro" && kokoroPkg != null -> kokoroPkg
             else -> null
         }
         if (effectiveAndroidPkg != null) {
@@ -607,7 +606,9 @@ class BarbaraRuntime(private val context: Context) {
         val stripTags = if (payload.has("stripVocalTags")) payload.optBoolean("stripVocalTags", true) else secretStore.stripVocalTags()
         val maxChunkChars = payload.optInt("maxChunkChars", 140)
         val requested = payload.optString("engine").takeIf { it.isNotBlank() } ?: secretStore.ttsEngine()
+        val explicitEnginePkg = if (payload.has("androidEnginePackage")) payload.optString("androidEnginePackage").trim().takeIf { it.isNotBlank() } else null
         val kokoroPkg = androidTtsService.detectKokoroPackage()
+        val preferredEnginePkg = explicitEnginePkg ?: secretStore.androidTtsEnginePackage().takeIf { it.isNotBlank() } ?: kokoroPkg
         return when (requested.lowercase()) {
             "gemini" -> {
                 androidTtsService.stop()
@@ -615,20 +616,18 @@ class BarbaraRuntime(private val context: Context) {
             }
             "kokoro" -> {
                 ttsService.stop()
-                val targetPkg = kokoroPkg ?: secretStore.androidTtsEnginePackage().takeIf { it.isNotBlank() }
-                androidTtsService.speakAsync(text, secretStore.androidTtsVoice(), secretStore.ttsLanguage(), style, speed, stripTags, targetPkg, maxChunkChars)
+                androidTtsService.speakAsync(text, secretStore.androidTtsVoice(), secretStore.ttsLanguage(), style, speed, stripTags, preferredEnginePkg, maxChunkChars)
                     .put("engine", "kokoro")
             }
             "android" -> {
                 ttsService.stop()
-                val targetPkg = secretStore.androidTtsEnginePackage().takeIf { it.isNotBlank() }
+                val targetPkg = explicitEnginePkg ?: secretStore.androidTtsEnginePackage().takeIf { it.isNotBlank() }
                 androidTtsService.speakAsync(text, secretStore.androidTtsVoice(), secretStore.ttsLanguage(), style, speed, stripTags, targetPkg, maxChunkChars)
             }
             else -> {
                 runCatching {
                     ttsService.stop()
-                    val targetPkg = kokoroPkg ?: secretStore.androidTtsEnginePackage().takeIf { it.isNotBlank() }
-                    androidTtsService.speakAsync(text, secretStore.androidTtsVoice(), secretStore.ttsLanguage(), style, speed, stripTags, targetPkg, maxChunkChars)
+                    androidTtsService.speakAsync(text, secretStore.androidTtsVoice(), secretStore.ttsLanguage(), style, speed, stripTags, preferredEnginePkg, maxChunkChars)
                 }.getOrElse {
                     androidTtsService.stop()
                     ttsService.speakAsync(text, style, profile, speed, stripTags).put("engine", "gemini").put("androidFallbackError", it.message ?: "android_tts_unavailable")
