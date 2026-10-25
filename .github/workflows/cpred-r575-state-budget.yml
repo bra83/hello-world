@@ -18,6 +18,15 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Retire superseded preliminary artifact until updated gates pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=cyberpunk-red-r575-state-budget-20261025
+          OLD=$(gh api "repos/bra83/hello-world/releases/tags/$TAG" --jq '.assets[] | select(.name=="BRASEIRO_CYBERPUNK_RED_4.1.75.apk") | .digest' 2>/dev/null || true)
+          if [ "$OLD" = 'sha256:4ee114f403bfc4de3b8233c831da0725552029fcb8fdf22146ae95dda7be1e46' ]; then
+            gh release delete "$TAG" --repo bra83/hello-world --cleanup-tag --yes
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:

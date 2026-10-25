@@ -24,3 +24,12 @@ for(const phase of ['start','save','readback_pending','runtime_status']){
  else{assert.equal(c.campaignState.session.narrationSource,'error');assert.doesNotMatch(c.campaignState.session.currentNarration,/GERANDO CENA/);assert.equal(c.name,'Preservado')}
 }
 console.log('PASS: failed start/save/settings restore durable character; no premature Gemini call; stale pending message cleared');
+
+{
+ let c=createCharacter({method:'complete',role:'solo',name:'Retomado'});
+ const saved=structuredClone(c);saved.campaignState.session={status:'active',narrationSource:'pending',currentNarration:'GERANDO CENA COM GEMINI...',history:[{narration:'História preservada'}]};
+ const host={character:()=>c,bridge:{loadCharacter:async()=>saved},setCharacter:x=>{c=x},sessionState:x=>x.campaignState.session,renderCharacter:()=>{},render:()=>{},toast:()=>{}};
+ await CharacterWorkbenchUI.prototype.continueAdventure.call(host);
+ assert.equal(c.campaignState.session.status,'active');assert.equal(c.campaignState.session.narrationSource,'interrupted');assert.doesNotMatch(c.campaignState.session.currentNarration,/GERANDO CENA/);assert.equal(c.campaignState.session.history[0].narration,'História preservada');
+ console.log('PASS: Continue recovers a durable pending session without phantom generation or lost history');
+}

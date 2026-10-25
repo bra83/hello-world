@@ -63,6 +63,7 @@ def apply(root):
   async saveSession(c){'''
     # Remove the old method closing brace, so catch belongs to the outer guard.
     s=replace_once(s,"this.renderCharacter();this.render();\n  }\n  async saveSession(c){", "this.renderCharacter();this.render();\n"+after)
+    s=replace_once(s,"    this.setCharacter(loaded);const c=this.character();if(this.sessionState(c).status!=='active')", "    this.setCharacter(loaded);const c=this.character();const resumed=this.sessionState(c);if(resumed.narrationSource==='pending'){resumed.narrationSource='interrupted';resumed.currentNarration='A geração anterior foi interrompida. Sua ficha e sua aventura foram restauradas. Envie sua ação para retomar a cena.'}if(this.sessionState(c).status!=='active')")
     (app/'sheets.js').write_text(s)
     # Recover the stale pending message left on disk by an older failed start.
     f=app/'app.js';s=f.read_text()
