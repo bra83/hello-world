@@ -30,7 +30,9 @@ def tap(label):
         def matches_label(node):
             name=re.sub(r'\s+', ' ', node.get('text', '') or node.get('content-desc', '')).strip().upper()
             wanted=label.upper()
-            return name==wanted or name.endswith(' '+wanted) or name.startswith(wanted+' ')
+            bounds=list(map(int,re.findall(r'\d+',node.get('bounds',''))))
+            visible=len(bounds)==4 and bounds[2]>bounds[0] and bounds[3]>bounds[1]
+            return visible and re.search(r'(^|\W)'+re.escape(wanted)+r'($|\W)',name) is not None
         matches = [n for n in root.iter('node') if matches_label(n)]
         if matches:
             # Bottom navigation wins over duplicate links in the content.

@@ -145,3 +145,8 @@ body#cpredMobile #tab-table .session-world-card{padding:12px 14px!important}
 body#cpredMobile #tab-table #tableDiceBtn{display:block!important;min-height:44px!important}
 
 body#cpredMobile #mobileHeader{display:flex!important;height:auto!important;visibility:visible!important}
+/* Android WebView older than Chromium 87 does not implement the inset shorthand. */
+body#cpredMobile #moreSheet.more-sheet:not(.hidden){display:flex!important;align-items:flex-end!important;top:0!important;right:0!important;bottom:0!important;left:0!important;width:100%!important;height:100%!important;max-height:none!important;transform:none!important;visibility:visible!important;opacity:1!important}
+body#cpredMobile #moreSheet.more-sheet.hidden{display:none!important}
+body#cpredMobile #moreSheet .more-sheet-card{position:relative!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;transform:none!important;max-height:90vh!important;margin:auto auto 0!important}
+body#cpredMobile .help-modal,body#cpredMobile .dice-tray{top:0!important;right:0!important;bottom:0!important;left:0!important}

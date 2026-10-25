@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import shutil
+import re
 
 def apply(root):
     root = Path(root).resolve()
@@ -15,10 +16,8 @@ def apply(root):
         if old not in code and new not in code:
             raise RuntimeError(f'Unsupported Android source: {name}')
         code = code.replace(old, new)
-    code = code.replace('latestVersionCode > 4172', 'latestVersionCode > BuildConfig.VERSION_CODE')
-    code = code.replace('.put("currentAppVersion", "4.1.72")', '.put("currentAppVersion", BuildConfig.VERSION_NAME)')
-    code = code.replace('.put("currentVersionCode", 4172)', '.put("currentVersionCode", BuildConfig.VERSION_CODE)')
-    code = code.replace('4172 < minCode || 4172 > maxCode', 'BuildConfig.VERSION_CODE < minCode || BuildConfig.VERSION_CODE > maxCode')
+    code = re.sub(r'\b4172\b', 'BuildConfig.VERSION_CODE', code)
+    code = code.replace('"4.1.72"', 'BuildConfig.VERSION_NAME')
     runtime.write_text(code)
     for src in overlay.rglob('*'):
         if src.is_file():
