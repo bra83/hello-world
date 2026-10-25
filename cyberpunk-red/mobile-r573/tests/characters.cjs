@@ -38,7 +38,7 @@ const base=process.env.CPRED_TEST_URL||'http://127.0.0.1:8091/cyberpunk-current/
  await page.locator('.bottom-nav [data-tab="table"]').click();await page.locator('.mobile-campaign').evaluate(x=>x.open=true);
  for(const id of ['adventureModuleSelect','adventureStartMode']){
  const size=await page.locator('#'+id).evaluate(x=>({h:x.clientHeight,font:parseFloat(getComputedStyle(x).fontSize),pad:parseFloat(getComputedStyle(x).paddingTop)+parseFloat(getComputedStyle(x).paddingBottom)}));
- assert.ok(size.h>=size.font*1.4+size.pad-2,`${id} clips text: ${JSON.stringify(size)}`);
+ assert.ok(size.font>=16&&size.h>=size.font*1.4+size.pad-2,`${id} clips text: ${JSON.stringify(size)}`);
  }
  await page.locator('.bottom-nav [data-tab="atlas"]').click();
  const box=await page.locator('#atlasCenter').boundingBox();assert.ok(box.width>=44);assert.ok(await page.locator('#atlasCenter').evaluate(x=>getComputedStyle(x).whiteSpace==='nowrap'));
