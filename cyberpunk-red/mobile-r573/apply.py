@@ -15,6 +15,10 @@ def apply(root):
         if old not in code and new not in code:
             raise RuntimeError(f'Unsupported Android source: {name}')
         code = code.replace(old, new)
+    code = code.replace('latestVersionCode > 4172', 'latestVersionCode > BuildConfig.VERSION_CODE')
+    code = code.replace('.put("currentAppVersion", "4.1.72")', '.put("currentAppVersion", BuildConfig.VERSION_NAME)')
+    code = code.replace('.put("currentVersionCode", 4172)', '.put("currentVersionCode", BuildConfig.VERSION_CODE)')
+    code = code.replace('4172 < minCode || 4172 > maxCode', 'BuildConfig.VERSION_CODE < minCode || BuildConfig.VERSION_CODE > maxCode')
     runtime.write_text(code)
     for src in overlay.rglob('*'):
         if src.is_file():

@@ -489,7 +489,7 @@ setTimeout(()=>workbench.importIncomingSceneImage?.(),350);
 window.addEventListener('barbara:shared-image-available',()=>workbench.importIncomingSceneImage?.());
 ['barbara:scene-enter','barbara:scene-exit','barbara:travel'].forEach(name=>document.addEventListener(name,()=>workbench.renderSession?.()));
 installMobileShell();
-window.__cpredUiReady=true;document.documentElement.classList.add('ui-ready');document.documentElement.classList.remove('ui-boot-failed');
+window.__cpredUiReady=true;console.info('[CPRED_UI_READY]');document.documentElement.classList.add('ui-ready');document.documentElement.classList.remove('ui-boot-failed');
 
 
 const e2eMode=new URLSearchParams(location.search).get('e2e');

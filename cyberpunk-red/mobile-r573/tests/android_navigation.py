@@ -20,7 +20,11 @@ def hierarchy():
 
 def tap(label):
     for attempt in range(12):
-        root = hierarchy()
+        try:
+            root = hierarchy()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError):
+            time.sleep(1)
+            continue
         matches = [n for n in root.iter('node') if n.get('text', '').strip().upper() == label.upper()]
         if matches:
             # Bottom navigation wins over duplicate links in the content.
@@ -34,7 +38,17 @@ def tap(label):
 
 adb('install', '-r', apk)
 adb('logcat', '-c')
+adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+adb('shell', 'wm', 'dismiss-keyguard')
 adb('shell', 'am', 'start', '-n', package+'/.MainActivity')
+for attempt in range(60):
+    if '[CPRED_UI_READY]' in adb('logcat','-d','-s','CPRED_WEBVIEW:*'):
+        break
+    time.sleep(1)
+else:
+    (out/'boot-logcat.txt').write_text(adb('logcat','-d'))
+    (out/'boot.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
+    raise AssertionError('Android WebView did not finish boot')
 for label, tab in [('FICHA','sheet'), ('MAPA','atlas'), ('COMBATE','combat'), ('CENA','table')]*2:
     tap(label)
     for attempt in range(20):

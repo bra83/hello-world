@@ -94,6 +94,7 @@ jobs:
         with:
           name: cyberpunk-r573-build-and-navigation
           path: |
+            build-source/android/app/build/outputs/apk/debug/app-debug.apk
             deliverables/
             evidence/
             android-build.log
