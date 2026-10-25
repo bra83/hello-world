@@ -4,6 +4,9 @@ on:
     branches: [fix/cyberpunk-mobile-ui-r573-20261025]
     paths: [cyberpunk-red/mobile-r573/**, .github/workflows/cpred-r573-mobile-ui.yml]
   workflow_dispatch:
+concurrency:
+  group: cpred-r573-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
@@ -43,6 +46,7 @@ jobs:
         run: |
           python -m http.server 8091 --bind 127.0.0.1 > /tmp/cpred-http.log 2>&1 &
           node cyberpunk-red/mobile-r573/tests/navigation.cjs | tee navigation.log
+      - uses: android-actions/setup-android@v3
       - name: Install Android platform
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - name: Compile Android APK
