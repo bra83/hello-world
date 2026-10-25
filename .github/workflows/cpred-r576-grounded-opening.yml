@@ -62,6 +62,7 @@ jobs:
           curl --silent --fail http://127.0.0.1:8091/ >/dev/null
           node cyberpunk-red/mobile-r573/tests/navigation.cjs | tee navigation.log
           node cyberpunk-red/mobile-r573/tests/characters.cjs | tee characters.log
+          node cyberpunk-red/r576/tests/grounding_ui.cjs | tee grounding-ui.log
           python cyberpunk-red/mobile-r573/tests/narrative_repair.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl | tee narrative.log
       - uses: android-actions/setup-android@v3
         with:
@@ -123,7 +124,7 @@ jobs:
           cd build-source
           zip -qr ../deliverables/CYBERPUNK_RED_4.1.76_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/.kotlin/*'
           cd ..
-          cp navigation.log android-build.log characters.log narrative.log grounded-opening.log state-budget.log start-failure.log failure-status.log deliverables/
+          cp navigation.log android-build.log characters.log narrative.log grounded-opening.log state-budget.log start-failure.log failure-status.log grounding-ui.log deliverables/
           cp -r evidence deliverables/
           cd deliverables
           zip -qr CYBERPUNK_RED_4.1.76_EVIDENCIAS.zip evidence
