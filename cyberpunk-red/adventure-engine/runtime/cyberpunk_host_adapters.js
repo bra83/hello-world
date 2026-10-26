@@ -81,7 +81,7 @@ export class CyberpunkRulesAdapter{
     };
   }
 
-  requestBrowserResolver(payload,timeoutMs=80){
+  requestBrowserResolver(payload,timeoutMs=5000){
     if(typeof document==='undefined'||typeof CustomEvent==='undefined')return Promise.resolve(null);
     return new Promise(resolve=>{
       const requestId='adv-rule-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);

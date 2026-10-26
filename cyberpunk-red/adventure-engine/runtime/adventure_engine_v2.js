@@ -82,7 +82,7 @@ export class AdventureRuntime extends Core.AdventureRuntime {
       const policy=norm(ev.repeatPolicy||'ONCE').toUpperCase(),already=this.state.triggeredEventIds.includes(ev.id);
       if((policy==='ONCE'||policy==='UNTIL_SUCCESS')&&already)continue;
       const ruleResults=await this.resolveRuleActions(ev.ruleActions,{event:ev,context:{...context,event}});
-      const requiredBlocked=ruleResults.some((r,index)=>list(ev.ruleActions)[index]?.required!==false&&(r?.ok!==true||r?.resolved!==true||r?.blocked===true));
+      const requiredBlocked=ruleResults.some((r,index)=>list(ev.ruleActions)[index]?.required!==false&&(r?.ok!==true||r?.resolved!==true||r?.blocked===true||r?.passed===false||r?.success===false));
       if(requiredBlocked){results.push({eventId:ev.id,repeatPolicy:policy,ruleActions:clone(ev.ruleActions||[]),ruleResults,blockedByRules:true,applied:[],events:[]});this.persist();continue}
       const key=policy==='REPEATABLE'?this.nextOperationKey('event:'+ev.id):'event:'+ev.id;
       const out=this.applyConsequences(ev.consequences,{sourceId:'event:'+ev.id,idempotencyPrefix:key,context:{...context,event,ruleResults}});
