@@ -3490,63 +3490,89 @@ class BarbaraRuntime(private val context: Context) {
                     .put("passed", true).put("outcome", "REST_COMPLETED").put("persisted", true)
             }
 
-            "PURCHASE" -> {
-                val price = action.optInt("price", action.optInt("amount", -1))
-                if (price < 0) {
-                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
-                        .put("authority", "barbara-host-bridge").put("reason", "INVALID_PURCHASE_PRICE")
+            "PURCHASE", "SALE" -> {
+                val denyTrade = { reason: String ->
+                    JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("type", type).put("actionId", actionId)
+                        .put("reason", reason)
                 }
-                val currentCash = c.optInt("eurobucks", c.optInt("cash", 0))
-                if (currentCash < price) {
-                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
-                        .put("authority", "barbara-host-bridge").put("reason", "INSUFFICIENT_FUNDS")
-                        .put("diagnostic", "Eurobucks insuficientes: possui $currentCash, requer $price")
+                // A MISSION_REWARD is not a resale. It must use the verified campaign wallet.
+                if (action.optString("operation").equals("MISSION_REWARD", true)) {
+                    return denyTrade("MISSION_REWARD_REQUIRES_AUTHORITATIVE_WALLET")
                 }
-                val newCash = currentCash - price
-                c.put("eurobucks", newCash)
-                c.put("cash", newCash)
-                val itemId = action.optString("itemId", "gear-${UUID.randomUUID()}")
+                val key = action.optString("idempotencyKey", action.optString("id")).trim()
+                val itemId = action.optString("itemId").trim()
+                val quantity = action.optInt("quantity", 1)
+                if (key.isBlank()) return denyTrade("TRADE_IDEMPOTENCY_KEY_REQUIRED")
+                if (itemId.isBlank()) return denyTrade("ITEM_ID_REQUIRED")
+                if (quantity !in 1..100) return denyTrade("INVALID_TRADE_QUANTITY")
+                val catalogItem = equipmentItem(itemId, c) ?: return denyTrade("UNKNOWN_CATALOG_ITEM")
+                val catalogUnitPrice = catalogItem.optInt("priceEb",
+                    catalogItem.optInt("costEb", catalogItem.optInt("price", -1)))
+                if (catalogUnitPrice <= 0) return denyTrade("CANONICAL_ITEM_PRICE_REQUIRED")
+                val campaign = campaignStateOf(c)
+                val ledger = campaign.optJSONObject("tradeReceiptsV3")
+                    ?: JSONObject().also { campaign.put("tradeReceiptsV3", it) }
+                val replay = ledger.optJSONObject(key)
+                if (replay != null) {
+                    if (replay.optString("type") != type || replay.optString("itemId") != itemId ||
+                        replay.optInt("quantity") != quantity) return denyTrade("TRADE_IDEMPOTENCY_CONFLICT")
+                    return JSONObject(replay.toString()).put("replayed", true)
+                }
+                val balance = c.optInt("eurobucks", c.optInt("cash", -1))
+                if (balance < 0) return denyTrade("CHARACTER_BALANCE_REQUIRED")
                 val inv = c.optJSONArray("inventory") ?: JSONArray().also { c.put("inventory", it) }
-                inv.put(JSONObject().put("itemId", itemId).put("quantity", action.optInt("quantity", 1)).put("equipped", false))
-
-                runBlocking(Dispatchers.IO) {
-                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
-                }
-                return JSONObject()
-                    .put("ok", true).put("resolved", true).put("blocked", false)
-                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
-                    .put("itemId", itemId).put("price", price).put("cashBefore", currentCash).put("cashAfter", newCash)
-                    .put("passed", true).put("outcome", "PURCHASED").put("persisted", true)
-            }
-
-            "SALE" -> {
-                val itemId = action.optString("itemId")
-                val inv = c.optJSONArray("inventory") ?: JSONArray()
-                var foundIdx = -1
+                val unitValue = if (type == "PURCHASE") catalogUnitPrice else catalogUnitPrice / 2
+                if (unitValue <= 0 || unitValue > Int.MAX_VALUE / quantity) return denyTrade("INVALID_CANONICAL_PRICE")
+                val total = unitValue * quantity
+                // UI/LLM may not authorize an arbitrary price.
+                if ((action.has("price") && action.optInt("price", -1) != total) ||
+                    (action.has("amount") && action.optInt("amount", -1) != total))
+                    return denyTrade("TRADE_PRICE_MISMATCH")
+                var owned = -1
                 for (i in 0 until inv.length()) {
-                    if (inv.optJSONObject(i)?.optString("itemId") == itemId) {
-                        foundIdx = i
+                    val row = inv.optJSONObject(i) ?: continue
+                    if (row.optString("itemId", row.optString("id")) == itemId) {
+                        owned = i
                         break
                     }
                 }
-                val price = action.optInt("price", action.optInt("amount", 50))
-                val currentCash = c.optInt("eurobucks", c.optInt("cash", 0))
-                val newCash = currentCash + price
-                c.put("eurobucks", newCash)
-                c.put("cash", newCash)
-                if (foundIdx != -1) {
-                    val row = inv.getJSONObject(foundIdx)
-                    val q = row.optInt("quantity", 1)
-                    if (q > 1) row.put("quantity", q - 1) else inv.remove(foundIdx)
+                val newBalance: Int
+                if (type == "PURCHASE") {
+                    if (balance < total) return denyTrade("INSUFFICIENT_FUNDS")
+                    if (owned >= 0) {
+                        val row = inv.getJSONObject(owned)
+                        row.put("quantity", row.optInt("quantity", 1) + quantity)
+                    } else {
+                        inv.put(JSONObject().put("itemId", itemId).put("quantity", quantity)
+                            .put("equipped", false))
+                    }
+                    newBalance = balance - total
+                } else {
+                    if (owned < 0) return denyTrade("ITEM_NOT_OWNED")
+                    val row = inv.getJSONObject(owned)
+                    val available = row.optInt("quantity", 1)
+                    if (available < quantity || available <= 0) return denyTrade("INSUFFICIENT_OWNED_QUANTITY")
+                    if (row.optBoolean("equipped") || row.optBoolean("installed") ||
+                        row.optBoolean("bound") || row.optBoolean("nonTransferable"))
+                        return denyTrade("ITEM_NOT_TRANSFERABLE")
+                    if (balance > Int.MAX_VALUE - total) return denyTrade("BALANCE_OVERFLOW")
+                    if (available == quantity) inv.remove(owned) else row.put("quantity", available - quantity)
+                    newBalance = balance + total
                 }
+                c.put("eurobucks", newBalance).put("cash", newBalance)
+                val receipt = JSONObject().put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("idempotencyKey", key).put("itemId", itemId).put("quantity", quantity)
+                    .put("unitPrice", unitValue).put("amountEb", total).put("cashBefore", balance)
+                    .put("cashAfter", newBalance).put("passed", true).put("persisted", true)
+                    .put("outcome", if (type == "PURCHASE") "PURCHASED" else "SOLD")
+                // Receipt, inventory and balance live in ONE atomic Room row.
+                ledger.put(key, receipt)
                 runBlocking(Dispatchers.IO) {
                     characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
                 }
-                return JSONObject()
-                    .put("ok", true).put("resolved", true).put("blocked", false)
-                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
-                    .put("itemId", itemId).put("salePrice", price).put("cashBefore", currentCash).put("cashAfter", newCash)
-                    .put("passed", true).put("outcome", "SOLD").put("persisted", true)
+                return receipt
             }
 
             "CYBERWARE_INSTALL" -> {
