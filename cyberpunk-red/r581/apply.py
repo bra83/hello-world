@@ -50,6 +50,13 @@ def apply(root):
         gradle_file.write_text(s, encoding='utf-8')
         print('Patched build.gradle.kts to versionCode 4182, versionName 4.1.82')
 
+    # 5. Update androidTest MediaDiceSpeechTest.kt
+    test_src = here / 'androidTest/MediaDiceSpeechTest.kt'
+    test_dst = root / 'app/src/androidTest/java/com/braseiro/cyberpunkred/MediaDiceSpeechTest.kt'
+    if test_src.exists() and test_dst.parent.exists():
+        test_dst.write_bytes(test_src.read_bytes())
+        print('Updated MediaDiceSpeechTest.kt with 3-cycle persistence tests')
+
     print('Applied 4.1.82 Cyberpunk RED definitive canonical rules audit & runtime parity.')
 
 if __name__ == '__main__':

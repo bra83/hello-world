@@ -12,8 +12,8 @@
 
 | Arquivo | Descrição | SHA-256 | Tamanho |
 | :--- | :--- | :--- | :--- |
-| `BRASEIRO_CYBERPUNK_RED_4.1.82_ASSINADO.apk` | APK compilado e assinado com o certificado canônico `6aa87a24a2eb...`, pronto para instalação sobreposta sem perda de dados. | `bd85060b4459fa96c7a58d9fe4971bf74a8ce273dab09a68d0407f22c550576a` | 266.36 MB (266.360.306 bytes) |
-| `CYBERPUNK_RED_4.1.82_ANDROID_SOURCE.zip` | Código-fonte Android completo, auditado e reproduzível (inclui `android/` com `local.properties.example`, wheel Python, assets web e classes Kotlin). | `aa4bf9792fc98b423b7fab8f72a533c0cf1c9f50577d8d4765349e9e241ea034` | 205.54 MB (215.519.829 bytes) |
+| `BRASEIRO_CYBERPUNK_RED_4.1.82_ASSINADO.apk` | APK compilado e assinado com o certificado canônico `6aa87a24a2eb...`, pronto para instalação sobreposta sem perda de dados. | `88646ba063ec8cec528fbf368f78c095a73fa5f006d819c5f7a0c7b4f47caf95` | 266.36 MB (266.360.214 bytes) |
+| `CYBERPUNK_RED_4.1.82_ANDROID_SOURCE.zip` | Código-fonte Android completo, auditado e reproduzível (inclui `android/` com `local.properties.example`, wheel Python, assets web e classes Kotlin). | `117157dd97d866a55de09b86f5bd6e82afe5e87f6315fc59d94e4dc103f3442f` | 205.54 MB (215.520.654 bytes) |
 | `audit/rules_matrix.csv` | Matriz com 83 regras auditadas contra os livros oficiais (R01 a R14), fórmulas esperadas, caminhos de código e testes de 314 execuções. | — | 46.8 KB |
 | `audit/sources_manifest.md` | Manifesto dos 48 arquivos PDF locais (Core v1.25, erratas e suplementos). | — | 9.5 KB |
 | `audit/source_mapping.md` | Mapeamento das regras oficiais aos símbolos de código e chamadores UI. | — | 10.3 KB |
@@ -66,6 +66,8 @@ Signer #1 certificate MD5 digest: e02c5846284c002733b8ca6b871d0429
    - Dados físicos 3D sobrepostos (`BraseiroDice3DOverlay.java`).
    - Atualizador OTA via GitHub com validação de assinatura RSA.
    - Persistência SQLite integral.
+9. **Instrumentação Android com 3 Ciclos de Salvar/Encerrar/Reabrir:**
+   - Adicionado teste `ePersistenceThreeCyclesSaveKillReload` no `MediaDiceSpeechTest.kt` validando 3 ciclos de salvar, fechar a atividade e recuperar do SQLite Room.
 
 ---
 
