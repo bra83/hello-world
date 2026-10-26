@@ -37,37 +37,21 @@ def apply(root):
     idx = app / 'index.html'
     if idx.exists():
         s = idx.read_text(encoding='utf-8')
-        s = s.replace('build=4180', 'build=4182').replace('build=4181', 'build=4182')
+        s = s.replace('build=4180', 'build=4183').replace('build=4181', 'build=4183')
         idx.write_text(s, encoding='utf-8')
-        print('Patched index.html build=4182')
+        print('Patched index.html build=4183')
 
     # 4. Update build.gradle.kts versionCode and versionName
     gradle_file = root / 'app/build.gradle.kts'
     if gradle_file.exists():
         s = gradle_file.read_text(encoding='utf-8')
-        s = s.replace('versionCode = 4180', 'versionCode = 4182').replace('versionCode = 4181', 'versionCode = 4182')
-        s = s.replace('versionName = "4.1.80"', 'versionName = "4.1.82"').replace('versionName = "4.1.81"', 'versionName = "4.1.82"')
-        signing_block = """
-    signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-"""
-        if 'signingConfigs {' not in s:
-            s = s.replace('buildFeatures {', signing_block + '\n    buildFeatures {')
+        s = s.replace('versionCode = 4180', 'versionCode = 4183').replace('versionCode = 4181', 'versionCode = 4183')
+        s = s.replace('versionName = "4.1.80"', 'versionName = "4.1.83"').replace('versionName = "4.1.81"', 'versionName = "4.1.83"')
+        # Security: never embed a signing key or password in publicly hosted source.
+        # Debug builds get an ephemeral Android debug key; upgrade/release signing
+        # must be performed with an owner-controlled, rotated signing key.
         gradle_file.write_text(s, encoding='utf-8')
-        print('Patched build.gradle.kts to versionCode 4182, versionName 4.1.82, and explicit canonical debug signingConfig')
-
-    # 5. Copy canonical keystore directly into app/
-    keystore_src = here / 'signing/debug.keystore'
-    keystore_dst = root / 'app/debug.keystore'
-    if keystore_src.exists():
-        keystore_dst.write_bytes(keystore_src.read_bytes())
-        print('Copied canonical debug.keystore into app/debug.keystore')
+        print('Patched build.gradle.kts to versionCode 4183, versionName 4.1.83')
 
     # 6. Update androidTest MediaDiceSpeechTest.kt
     test_src = here / 'androidTest/MediaDiceSpeechTest.kt'
@@ -76,7 +60,7 @@ def apply(root):
         test_dst.write_bytes(test_src.read_bytes())
         print('Updated MediaDiceSpeechTest.kt with 3-cycle persistence tests')
 
-    print('Applied 4.1.82 Cyberpunk RED definitive canonical rules audit & runtime parity.')
+    print('Applied 4.1.83 Cyberpunk RED integrity hardening (unsigned source; owner-managed signing required).')
 
 if __name__ == '__main__':
     apply(sys.argv[1])
