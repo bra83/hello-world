@@ -8,7 +8,7 @@ Kokoro: comparado AndroidTtsPlugin.java do mesmo SHA. Seleção explícita apena
 
 Imagem: correção de decode com inJustDecodeBounds: o retorno null significa que somente dimensões foram lidas, não uma falha de abertura. Controles de mídia ficam abertos acima da narração; importação exibe erros nativos antes engolidos. Intent Gemini usa EXTRA_TEXT, clipboard e queries Android para o aplicativo correto. ACTION_SEND pede ao Gemini abrir o prompt, sem prometer automação da interface de terceiros. Compartilhamento/importação e reabertura têm teste Android com ContentProvider de fixture.
 
-Escolhas: cartões existentes de ações sugeridas deixam o details recolhido e ficam antes da ação livre. Um clique preenche a ação para revisão; não executa decisões automaticamente.
+Escolhas: o schema do narrador aceita recommendedActions opcionais e o motor preserva até quatro strings validadas como sugestões, sem executar ações. Os cartões existentes de ações sugeridas deixam o details recolhido e ficam antes da ação livre. Um clique preenche a ação para revisão; não executa decisões automaticamente.
 
 Gemini TTS: corrigido contrato REST 3.8 conforme documentação oficial. Usa speech_metadata.style, voiceConfig.voice, sem systemInstruction incompatível e com AUDIO_L16 explícito. Parser procura áudio em todas as partes e aceita WAV PCM 24 kHz mono 16-bit, removendo RIFF antes do AudioTrack. Cache separado evita reutilizar WAV antigo como PCM. Perfil/estilo ficam fora da transcrição; falhas assíncronas aparecem na tela, apenas para o motor em uso.
 

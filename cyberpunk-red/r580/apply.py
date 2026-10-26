@@ -1,5 +1,5 @@
 from pathlib import Path
-import sys
+import sys,zipfile,base64,csv,hashlib,io
 
 def one(s,a,b):
     if s.count(a)!=1:raise RuntimeError('Unsupported source: '+a[:110])
@@ -77,6 +77,21 @@ def apply(root):
 #cpredMobile #sessionRecommended button{width:100%!important;text-align:left!important;white-space:normal!important;min-height:44px!important;line-height:1.4!important}
 ''')
     (app/'media_voice_580.js').write_bytes((here/'web/media_voice.js').read_bytes())
+    # Optional scene choices are presentation data, never canonical actions.
+    wheel=root/'app/wheels/motor_barbara-1.1.2-py3-none-any.whl'
+    with zipfile.ZipFile(wheel) as z:files={n:z.read(n) for n in z.namelist()}
+    src=files['barbara/gemini.py'].decode()
+    src=one(src,"'coverage':{'type':'ARRAY','items':{'type':'STRING'}},", "'coverage':{'type':'ARRAY','items':{'type':'STRING'}},\n                        'recommendedActions':{'type':'ARRAY','items':{'type':'STRING'}},")
+    src=one(src,"'Return only the requested JSON object.'", "'Offer 2–4 distinct optional actions grounded in this actual scene in presentation.recommendedActions. They are proposals for the player to choose, not performed actions, rules, outcomes or state mutations.','Return only the requested JSON object.'")
+    files['barbara/gemini.py']=src.encode()
+    src=files['barbara/engine.py'].decode()
+    src=one(src,"            presentation={'coverage':presentation.get('coverage',[])}", "            actions=presentation.get('recommendedActions',[])\n            actions=list(dict.fromkeys(x.strip()[:320] for x in actions if isinstance(x,str) and x.strip()))[:4] if isinstance(actions,list) else []\n            presentation={'coverage':presentation.get('coverage',[]),'recommendedActions':actions}")
+    files['barbara/engine.py']=src.encode()
+    record=next(n for n in files if n.endswith('.dist-info/RECORD'));out=io.StringIO();writer=csv.writer(out,lineterminator='\n')
+    for name,data in files.items():writer.writerow([name,'sha256='+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip('=') if name!=record else '',len(data) if name!=record else ''])
+    files[record]=out.getvalue().encode()
+    with zipfile.ZipFile(wheel,'w',zipfile.ZIP_DEFLATED) as z:
+        for name,data in files.items():z.writestr(name,data)
     p=root/'app/build.gradle.kts';s=p.read_text().replace('versionCode = 4179','versionCode = 4180').replace('versionName = "4.1.79"','versionName = "4.1.80"');p.write_text(s)
     p=root/'app/build.gradle.kts';s=p.read_text().replace('versionCode = 4180','versionCode = 4180\n        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"').replace('dependencies {','dependencies {\n    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")');p.write_text(s)
     target=root/'app/src/androidTest';(target/'java/com/braseiro/cyberpunkred').mkdir(parents=True,exist_ok=True)

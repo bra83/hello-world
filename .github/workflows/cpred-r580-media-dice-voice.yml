@@ -40,6 +40,7 @@ jobs:
       - name: Full opening contract and engine publication boundary
         run: |
           python cyberpunk-red/r579/tests/flow.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl patched build-source/android/app/src/main/assets/barbara/cyberpunk-red-4.0.0.zip | tee opening.log
+          python cyberpunk-red/r580/tests/choices.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl patched build-source/android/app/src/main/assets/barbara/cyberpunk-red-4.0.0.zip | tee choices.log
           node cyberpunk-red/r579/tests/opening_ui.mjs "$PWD/build-source/android" | tee opening-ui.log
       - name: Native speech contract and physical top-face simulations
         run: |
@@ -149,7 +150,7 @@ jobs:
           cd build-source
           zip -qr ../deliverables/CYBERPUNK_RED_4.1.80_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/.kotlin/*'
           cd ..
-          cp navigation.log android-build.log characters.log narrative.log contracts.log media.log instrumentation.log opening.log opening-ui.log settings-ui.log state-budget.log start-failure.log failure-status.log grounding-ui.log deliverables/
+          cp navigation.log android-build.log characters.log narrative.log contracts.log choices.log media.log instrumentation.log opening.log opening-ui.log settings-ui.log state-budget.log start-failure.log failure-status.log grounding-ui.log deliverables/
           cp -r evidence deliverables/
           cd deliverables
           zip -qr CYBERPUNK_RED_4.1.80_EVIDENCIAS.zip evidence
@@ -158,6 +159,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=cyberpunk-red-r580-media-dice-voice-20261025
+          TAG=cyberpunk-red-r580-media-dice-voice-20261026
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk RED 4.1.80 — fluxo de narração baseado no Forbidden Lands' --notes 'Corrige importação nativa de imagem e mantém imagem/controles acima do texto; escolhas visíveis; intent Gemini com prompt; mesa nativa Forbidden Lands com números projetados nas faces; motor Kokoro real selecionado sem substituição silenciosa; REST Gemini 3.8 e WAV/PCM corrigidos. Inclui contratos JVM, regressões e testes Android reais de mídia/dados/reprodução AudioTrack com HTTP injetado, sem chave real.'
           gh release upload "$TAG" deliverables/*.apk deliverables/*.zip deliverables/*.txt deliverables/*.log --clobber
