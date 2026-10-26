@@ -225,4 +225,85 @@ class MediaDiceSpeechTest {
     db.close()
    }
   }
+ @Test fun fR583GameRulesDurabilityAndNoFreeRewards() {
+  val id = "cpred_r583_guards"
+  val db = androidx.room.Room.databaseBuilder(ctx, CyberpunkCharacterDatabase::class.java,
+    "cyberpunk-red-adapter.sqlite3").allowMainThreadQueries().build()
+  val dao = db.characters()
+  val initial = JSONObject().put("characterId", id).put("name", "R583 Security Guard")
+    .put("role", "Netrunner").put("roleAbilityRank", 3)
+    .put("stats", JSONObject().put("INT", 6).put("REF", 6).put("BODY", 6).put("EMP", 5))
+    .put("skills", JSONObject().put("perception", 4))
+    .put("derived", JSONObject().put("hp", 40).put("maxHp", 40)
+      .put("humanity", 50).put("maxHumanity", 50).put("sp", 0))
+    .put("eurobucks", 1000).put("cash", 1000).put("inventory", org.json.JSONArray())
+    .put("armor", JSONObject().put("body", JSONObject().put("sp", 0)))
+    .put("campaignState", JSONObject().put("worldClock", JSONObject().put("elapsedMinutes", 0)))
+  runBlocking { dao.upsert(CyberpunkCharacterEntity(id, initial.toString(), System.currentTimeMillis())) }
+  try {
+   val host = BarbaraRuntime(ctx)
+   fun act(payload: JSONObject) = host.resolveAdventureRuleAction(
+     JSONObject().put("characterId", id).put("action", payload))
+   fun saved() = JSONObject(runBlocking { dao.get(id) }!!.characterJson)
+   val sale = act(JSONObject().put("type", "SALE").put("idempotencyKey", "sale-r583-01")
+     .put("itemId", "item-not-owned").put("quantity", 1).put("price", 900000))
+   assertFalse("Phantom sale must never credit eurobucks", sale.optBoolean("ok"))
+   assertEquals(1000, saved().getInt("eurobucks"))
+
+   val implant = act(JSONObject().put("type", "CYBERWARE_INSTALL")
+     .put("idempotencyKey", "install-r583-01").put("cyberwareId", "unowned-cyberware"))
+   assertFalse("Unowned cyberware cannot install", implant.optBoolean("ok"))
+   assertEquals(50, saved().getJSONObject("derived").getInt("humanity"))
+
+   val invalidDice = act(JSONObject().put("type", "DICE_ROLL")
+     .put("id", "dice-r583-bad").put("formula", "not-a-dice-formula"))
+   assertFalse("Invalid expression cannot fallback to d10", invalidDice.optBoolean("ok"))
+
+   val initialNet = act(JSONObject().put("type", "NETRUN").put("operation", "JACK_IN")
+     .put("architectureId", "ssp_net_arch_01").put("netTurnId", "net-t1")
+     .put("idempotencyKey", "net-in-1"))
+   assertTrue("Netrunner must jack in", initialNet.optBoolean("ok"))
+   assertEquals(2, initialNet.getInt("netActionsBudget"))
+   val pathfinder = act(JSONObject().put("type", "NETRUN").put("operation", "PATHFINDER")
+     .put("architectureId", "ssp_net_arch_01").put("netTurnId", "net-t1")
+     .put("floor", 1).put("dv", 0).put("idempotencyKey", "net-pathfinder-1"))
+   assertTrue("Authorized Pathfinder must resolve", pathfinder.optBoolean("ok"))
+   val net = saved().getJSONObject("campaignState").getJSONObject("netrunState")
+   assertEquals(0, net.optJSONArray("clearedFloors")?.length() ?: 0)
+   assertEquals(1, net.getJSONArray("discoveredFloors").getInt(0))
+
+   val damage = JSONObject().put("type", "DAMAGE").put("id", "combat-r583-1")
+     .put("formula", "3d6")
+   val first = act(damage)
+   assertTrue("Damage host must resolve", first.optBoolean("ok"))
+   val hpAfter = saved().getJSONObject("derived").getInt("hp")
+   val second = act(damage)
+   assertTrue(second.optBoolean("replayed"))
+   assertEquals("Damage replay must not remove HP twice", hpAfter,
+     saved().getJSONObject("derived").getInt("hp"))
+
+   val clock = JSONObject().put("type", "WORLD_TIME_ADVANCE")
+     .put("id", "clock-r583-1").put("minutes", 60)
+   val before = act(clock)
+   assertTrue(before.optBoolean("ok"))
+   val again = act(clock)
+   assertTrue(again.optBoolean("replayed"))
+   assertEquals(60, saved().getJSONObject("campaignState")
+     .getJSONObject("worldClock").getInt("elapsedMinutes"))
+
+   val payout = host.walletCreditMissionReward(
+     JSONObject().put("accountId", "acct:r583").put("campaignId", "cpred-r583-test")
+       .put("characterId", id).put("transactionId", "r583-unearned-01")
+       .put("rewardSource", "FALCO_ADVANCE").put("crewSize", 1)
+       .put("amount", 500).put("currency", "EUR"))
+   assertFalse("Unplayed mission cannot pay reward", payout.optBoolean("ok"))
+   assertEquals("Payout failure cannot change cash", 1000,
+     // 1000 initial currency is unchanged by combat and clock
+     saved().getInt("eurobucks"))
+  } finally {
+   runBlocking { dao.delete(id) }
+   db.close()
+  }
+ }
+
 }
