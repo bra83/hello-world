@@ -2913,17 +2913,82 @@ class BarbaraRuntime(private val context: Context) {
         context.getSharedPreferences("cpred-wallet-ledger-v1", Context.MODE_PRIVATE)
     }
 
+    // The authoritative economic receipt is stored in the SAME Room character row as eurobucks.
+    // The old SharedPreferences ledger is read-only for compatibility with previously paid saves.
+    private fun jacketPlanAndProvenance(
+        c: JSONObject, rewardId: String, crewSize: Int, itemIds: JSONArray, amount: Int
+    ): String? {
+        if (crewSize !in 1..30 || amount <= 0) return "INVALID_CREW_OR_AMOUNT"
+        val allowed = setOf("FALCO_ITEMS", "FALCO_ADVANCE", "FALCO_FULL_SET_BONUS", "ARASAKA_BIOMONITOR")
+        if (rewardId !in allowed) return "UNKNOWN_REWARD_SOURCE"
+        val unique = mutableSetOf<String>()
+        for (i in 0 until itemIds.length()) {
+            val id = itemIds.optString(i)
+            if (id.isBlank() || !unique.add(id)) return "INVALID_RECOVERED_ITEM_IDS"
+        }
+        if (rewardId != "FALCO_ITEMS" && itemIds.length() != 0) return "UNEXPECTED_REWARD_ITEMS"
+        if (rewardId == "FALCO_ITEMS" && itemIds.length() == 0) return "RECOVERED_ITEMS_REQUIRED"
+        val expected = when (rewardId) {
+            "FALCO_ITEMS" -> 500L * crewSize * itemIds.length()
+            "FALCO_ADVANCE" -> 500L * crewSize
+            "FALCO_FULL_SET_BONUS" -> 1000L
+            else -> 5000L
+        }
+        if (expected != amount.toLong()) return "REWARD_PLAN_MISMATCH"
+        val jacket = c.optJSONObject("campaignState")?.optJSONObject("theJacketCampaign")
+            ?: return "THE_JACKET_CAMPAIGN_NOT_STARTED"
+        val story = jacket.optJSONObject("story") ?: return "JACKET_STORY_PROVENANCE_MISSING"
+        val completed = story.optJSONArray("completed") ?: JSONArray()
+        val history = story.optJSONArray("history") ?: JSONArray()
+        val finished = (0 until completed.length()).map { completed.optString(it) }.toSet()
+        val current = story.optString("current")
+        val completedPings = story.optJSONArray("completedPings") ?: JSONArray()
+        if (rewardId == "FALCO_ADVANCE" && "meeting_falco" !in finished &&
+            current != "meeting_falco") return "FALCO_MEETING_NOT_REACHED"
+        if (rewardId == "FALCO_FULL_SET_BONUS" && completedPings.length() != 3)
+            return "FALCO_FULL_SET_NOT_RECOVERED"
+        if (rewardId == "FALCO_ITEMS") {
+            val recordedItems = mutableSetOf<String>()
+            for (i in 0 until history.length()) {
+                val event = history.optJSONObject(i) ?: continue
+                if (event.optString("type") in setOf("item_recovered", "recovered_item"))
+                    recordedItems.add(event.optString("itemId"))
+            }
+            for (i in 0 until itemIds.length()) {
+                if (itemIds.optString(i) !in recordedItems) return "REWARD_ITEM_NOT_RECORDED_RECOVERED"
+            }
+        }
+        if (rewardId == "ARASAKA_BIOMONITOR" &&
+            (0 until history.length()).none { i ->
+                history.optJSONObject(i)?.optString("type") == "arasaka_biomonitor_sold"
+            }) return "BIOMONITOR_SALE_NOT_AUTHORIZED"
+        return null
+    }
+
     fun walletGetTransaction(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
         val key = payload.optString("idempotencyKey").trim()
         val txId = payload.optString("transactionId").trim()
-        val lookupKey = key.ifEmpty { txId }
-        if (lookupKey.isEmpty()) {
-            return JSONObject().put("ok", false).put("found", false).put("reason", "MISSING_TRANSACTION_KEY")
+        val lookup = key.ifEmpty { txId }
+        if (lookup.isEmpty()) return JSONObject().put("ok", false).put("found", false)
+            .put("reason", "MISSING_TRANSACTION_KEY")
+        val charId = payload.optString("characterId").ifBlank { activeCharacterId().orEmpty() }
+        if (charId.isNotEmpty()) {
+            val c = storedCharacter(charId)?.let { JSONObject(it) }
+            val receipts = c?.optJSONObject("campaignState")?.optJSONObject("walletReceiptsV3")
+            if (receipts != null) {
+                val byKey = receipts.optJSONObject(lookup)
+                val byTx = if (byKey == null) (0 until receipts.length()).mapNotNull { i ->
+                    val name = receipts.names()?.optString(i) ?: return@mapNotNull null
+                    receipts.optJSONObject(name)
+                }.firstOrNull { it.optString("transactionId") == txId && txId.isNotBlank() } else null
+                val receipt = byKey ?: byTx
+                if (receipt != null) return JSONObject(receipt.toString()).put("found", true)
+            }
         }
-        val stored = walletPrefs.getString("tx:$lookupKey", null)
+        // Legacy saved receipts prevent accidental re-crediting an old rewarded mission.
+        val legacy = walletPrefs.getString("tx:$lookup", null)
             ?: return JSONObject().put("ok", true).put("found", false)
-        val tx = JSONObject(stored)
-        return JSONObject(tx.toString()).put("ok", true).put("found", true).put("resolved", true)
+        return JSONObject(legacy).put("found", true)
     }
 
     data class DiceEvaluation(
@@ -3018,102 +3083,88 @@ class BarbaraRuntime(private val context: Context) {
     }
 
     fun walletCreditMissionReward(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
+        val deny = { reason: String -> JSONObject().put("ok", false).put("resolved", false)
+            .put("blocked", true).put("reason", reason) }
         val accountId = payload.optString("accountId").trim()
-        val idempotencyKey = payload.optString("idempotencyKey", payload.optString("transactionId")).trim()
-        val amountEb = if (payload.has("amountEb")) payload.optInt("amountEb", -1) else payload.optInt("amount", -1)
-        val missionId = payload.optString("missionId", payload.optString("adventure", "cemk_the_jacket"))
-        val rewardId = payload.optString("rewardId", payload.optString("rewardSource", ""))
-        val crewSize = payload.optInt("crewSize", 1)
-        val itemIds = payload.optJSONArray("itemIds") ?: JSONArray()
-        val currency = payload.optString("currency", "EUR")
-
-        if (accountId.isEmpty() || idempotencyKey.isEmpty() || amountEb <= 0) {
-            return JSONObject().put("ok", false).put("resolved", false).put("blocked", true).put("reason", "INVALID_WALLET_CREDIT_REQUEST")
+        val campaignId = payload.optString("campaignId").trim()
+        val key = payload.optString("idempotencyKey", payload.optString("transactionId")).trim()
+        val txId = payload.optString("transactionId", key).trim()
+        val rewardId = payload.optString("rewardSource", payload.optString("rewardId")).trim()
+        val crewSize = payload.optInt("crewSize", 0)
+        val amount = if (payload.has("amountEb")) payload.optInt("amountEb", -1) else payload.optInt("amount", -1)
+        val items = payload.optJSONArray("itemIds") ?: JSONArray()
+        val currency = payload.optString("currency", "")
+        if (accountId.isBlank() || campaignId.isBlank() || key.isBlank() || txId.isBlank() ||
+            currency != "EUR") return deny("INVALID_SCOPED_WALLET_REQUEST")
+        val charId = payload.optString("characterId").ifBlank { activeCharacterId().orEmpty() }
+        if (charId.isBlank()) return deny("CHARACTER_ID_REQUIRED")
+        val raw = storedCharacter(charId) ?: return deny("CHARACTER_NOT_FOUND")
+        val c = JSONObject(raw)
+        val storyCampaignId = c.optJSONObject("campaignState")?.optJSONObject("session")
+            ?.optString("campaignId", c.optJSONObject("campaignState")?.optString("campaignId", "")) ?: ""
+        if (storyCampaignId.isNotBlank() && storyCampaignId != campaignId) return deny("CAMPAIGN_SCOPE_MISMATCH")
+        val planFailure = jacketPlanAndProvenance(c, rewardId, crewSize, items, amount)
+        if (planFailure != null) return deny(planFailure)
+        val campaign = campaignStateOf(c)
+        val receipts = campaign.optJSONObject("walletReceiptsV3")
+            ?: JSONObject().also { campaign.put("walletReceiptsV3", it) }
+        val already = receipts.optJSONObject(key)
+        if (already != null) {
+            if (already.optString("accountId") != accountId ||
+                already.optString("campaignId") != campaignId ||
+                already.optString("rewardSource") != rewardId ||
+                already.optInt("amount") != amount || already.optString("transactionId") != txId ||
+                already.optInt("crewSize") != crewSize ||
+                already.optJSONArray("itemIds")?.toString() != items.toString())
+                return deny("IDEMPOTENCY_KEY_REUSE_MISMATCH")
+            return JSONObject(already.toString()).put("replayed", true)
         }
-
-        val existingRaw = walletPrefs.getString("tx:$idempotencyKey", null)
-        if (existingRaw != null) {
-            val existing = JSONObject(existingRaw)
-            if (existing.optString("accountId") != accountId ||
-                existing.optInt("amountEb", -1) != amountEb ||
-                existing.optString("rewardId") != rewardId
-            ) {
-                return JSONObject()
-                    .put("ok", false)
-                    .put("resolved", false)
-                    .put("blocked", true)
-                    .put("reason", "IDEMPOTENCY_KEY_REUSE_MISMATCH")
+        // Prevent a second key from paying the same unique reward or recovered item.
+        val allNames = receipts.names() ?: JSONArray()
+        for (i in 0 until allNames.length()) {
+            val other = receipts.optJSONObject(allNames.optString(i)) ?: continue
+            if (other.optString("transactionId") == txId) return deny("TRANSACTION_ID_REUSE")
+            if (other.optString("rewardSource") == rewardId) {
+                if (rewardId != "FALCO_ITEMS") return deny("REWARD_ALREADY_PAID")
+                val paid = other.optJSONArray("itemIds") ?: JSONArray()
+                for (j in 0 until paid.length()) for (k in 0 until items.length())
+                    if (paid.optString(j) == items.optString(k)) return deny("RECOVERED_ITEM_ALREADY_PAID")
             }
-            return JSONObject(existing.toString())
-                .put("ok", true)
-                .put("resolved", true)
-                .put("replayed", true)
         }
-
-        val charId = activeCharacterId() ?: accountId.removePrefix("acct:")
-        val charRaw = storedCharacter(charId)
-        var balanceAfter = amountEb
-        if (charRaw != null) {
-            val charObj = JSONObject(charRaw)
-            val currentEb = charObj.optInt("eurobucks", charObj.optInt("cash", 0))
-            balanceAfter = currentEb + amountEb
-            charObj.put("eurobucks", balanceAfter)
-            charObj.put("cash", balanceAfter)
-            saveCharacter(charId, charObj.toString())
-        }
-
-        val txId = if (payload.has("transactionId") && payload.optString("transactionId").isNotBlank()) payload.optString("transactionId") else "tx-${UUID.nameUUIDFromBytes(idempotencyKey.toByteArray(Charsets.UTF_8))}"
+        val old = c.optInt("eurobucks", c.optInt("cash", -1))
+        if (old < 0 || amount > Int.MAX_VALUE - old) return deny("INVALID_OR_OVERFLOWED_BALANCE")
+        val next = old + amount
+        c.put("eurobucks", next).put("cash", next)
         val receipt = JSONObject()
-            .put("ok", true)
-            .put("resolved", true)
-            .put("blocked", false)
-            .put("durable", true)
-            .put("status", "committed")
-            .put("authority", "barbara-wallet-ledger")
-            .put("transactionId", txId)
-            .put("idempotencyKey", idempotencyKey)
-            .put("campaignId", payload.optString("campaignId", "cemk_campaign"))
-            .put("accountId", accountId)
-            .put("characterId", charId)
-            .put("adventure", missionId)
-            .put("missionId", missionId)
-            .put("rewardSource", rewardId)
-            .put("rewardId", rewardId)
-            .put("crewSize", crewSize)
-            .put("itemIds", itemIds)
-            .put("currency", currency)
-            .put("amount", amountEb)
-            .put("amountEb", amountEb)
-            .put("balanceAfterEb", balanceAfter)
+            .put("ok", true).put("resolved", true).put("blocked", false).put("found", true)
+            .put("durable", true).put("status", "committed").put("authority", "barbara-wallet-ledger")
+            .put("campaignId", campaignId).put("accountId", accountId)
+            .put("characterId", charId).put("transactionId", txId).put("idempotencyKey", key)
+            .put("rewardSource", rewardId).put("rewardId", rewardId)
+            .put("crewSize", crewSize).put("itemIds", JSONArray(items.toString()))
+            .put("currency", "EUR").put("amount", amount).put("amountEb", amount)
+            .put("adventure", "CEMK_THE_JACKET").put("balanceAfterEb", next)
             .put("committedAtEpochMs", System.currentTimeMillis())
-
-        walletPrefs.edit()
-            .putString("tx:$idempotencyKey", receipt.toString())
-            .putString("tx:$txId", receipt.toString())
-            .commit()
-
+        receipts.put(key, receipt)
+        // Atomic Room upsert: credit and receipt are persisted in the SAME character JSON.
+        runBlocking(Dispatchers.IO) {
+            characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+        }
         return receipt
     }
 
     fun verifyRewardEligibility(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
-        val rewardId = payload.optString("rewardId", payload.optString("rewardSource")).trim()
-        val amountEb = if (payload.has("amountEb")) payload.optInt("amountEb", 0) else payload.optInt("amount", 0)
+        val rewardId = payload.optString("rewardSource", payload.optString("rewardId")).trim()
+        val amount = if (payload.has("amountEb")) payload.optInt("amountEb", -1) else payload.optInt("amount", -1)
         val charId = payload.optString("characterId").ifBlank { activeCharacterId().orEmpty() }
-        if (rewardId.isEmpty() || amountEb <= 0) {
-            return JSONObject().put("ok", false).put("resolved", false).put("eligible", false).put("reason", "INVALID_REWARD_PARAMETERS")
-        }
-        val rawChar = if (charId.isNotBlank()) storedCharacter(charId) else null
-        if (rawChar == null) {
-            return JSONObject().put("ok", false).put("resolved", false).put("eligible", false).put("reason", "CHARACTER_NOT_FOUND")
-        }
-        return JSONObject()
-            .put("ok", true)
-            .put("resolved", true)
-            .put("eligible", true)
-            .put("authority", "barbara-rules-host")
-            .put("characterId", charId)
-            .put("rewardId", rewardId)
-            .put("amountEb", amountEb)
+        val c = if (charId.isNotBlank()) storedCharacter(charId)?.let { JSONObject(it) } else null
+        val reason = if (c == null) "CHARACTER_NOT_FOUND" else jacketPlanAndProvenance(
+            c, rewardId, payload.optInt("crewSize", 0), payload.optJSONArray("itemIds") ?: JSONArray(), amount)
+        if (reason != null) return JSONObject().put("ok", false).put("resolved", false)
+            .put("blocked", true).put("eligible", false).put("reason", reason)
+        return JSONObject().put("ok", true).put("resolved", true).put("eligible", true)
+            .put("authority", "barbara-rules-host").put("characterId", charId)
+            .put("rewardId", rewardId).put("amountEb", amount)
     }
 
     fun verifyWorldTimeAdvance(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
