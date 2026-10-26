@@ -2926,12 +2926,107 @@ class BarbaraRuntime(private val context: Context) {
         return JSONObject(tx.toString()).put("ok", true).put("found", true).put("resolved", true)
     }
 
+    data class DiceEvaluation(
+        val formula: String,
+        val count: Int,
+        val sides: Int,
+        val modifier: Int,
+        val rolls: List<Int>,
+        val total: Int,
+        val sixesCount: Int,
+        val isCriticalInjuryTrigger: Boolean,
+        val naturalD10: Int?,
+        val extraD10: Int?,
+        val isD10Explosion: Boolean,
+        val isD10Botch: Boolean
+    )
+
+    private fun evaluateDiceExpression(formulaRaw: String): DiceEvaluation {
+        val formula = formulaRaw.trim().lowercase().replace(" ", "")
+        val match = Regex("""^(\d*)d(\d+)([+-]\d+)?$""").find(formula)
+        if (match != null) {
+            val count = match.groupValues[1].let { if (it.isEmpty()) 1 else it.toInt() }.coerceIn(1, 100)
+            val sides = match.groupValues[2].toInt().coerceIn(2, 100)
+            val mod = match.groupValues[3].let { if (it.isEmpty()) 0 else it.toInt() }
+
+            if (sides == 10 && count == 1) {
+                val nat = kotlin.random.Random.nextInt(1, 11)
+                var extra = 0
+                var exploded = false
+                var botched = false
+                if (nat == 10) {
+                    extra = kotlin.random.Random.nextInt(1, 11)
+                    exploded = true
+                } else if (nat == 1) {
+                    extra = kotlin.random.Random.nextInt(1, 11)
+                    botched = true
+                }
+                val total = when {
+                    exploded -> 10 + extra + mod
+                    botched -> 1 - extra + mod
+                    else -> nat + mod
+                }
+                return DiceEvaluation(
+                    formula = formulaRaw,
+                    count = 1,
+                    sides = 10,
+                    modifier = mod,
+                    rolls = if (extra > 0) listOf(nat, extra) else listOf(nat),
+                    total = total,
+                    sixesCount = 0,
+                    isCriticalInjuryTrigger = false,
+                    naturalD10 = nat,
+                    extraD10 = if (extra > 0) extra else null,
+                    isD10Explosion = exploded,
+                    isD10Botch = botched
+                )
+            } else {
+                val rolls = mutableListOf<Int>()
+                var sixes = 0
+                var sum = 0
+                repeat(count) {
+                    val r = kotlin.random.Random.nextInt(1, sides + 1)
+                    rolls.add(r)
+                    sum += r
+                    if (sides == 6 && r == 6) sixes++
+                }
+                val total = sum + mod
+                return DiceEvaluation(
+                    formula = formulaRaw,
+                    count = count,
+                    sides = sides,
+                    modifier = mod,
+                    rolls = rolls,
+                    total = total,
+                    sixesCount = sixes,
+                    isCriticalInjuryTrigger = (sides == 6 && sixes >= 2),
+                    naturalD10 = null,
+                    extraD10 = null,
+                    isD10Explosion = false,
+                    isD10Botch = false
+                )
+            }
+        }
+        val intVal = formula.toIntOrNull()
+        if (intVal != null) {
+            return DiceEvaluation(formulaRaw, 1, 1, 0, listOf(intVal), intVal, 0, false, null, null, false, false)
+        }
+        val d10Obj = rollCriticalD10()
+        val nat = d10Obj.getInt("natural")
+        val ext = d10Obj.optInt("extra")
+        return DiceEvaluation(formulaRaw, 1, 10, 0, if (ext > 0) listOf(nat, ext) else listOf(nat), d10Obj.getInt("total"), 0, false, nat, ext, nat == 10, nat == 1)
+    }
+
     fun walletCreditMissionReward(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
         val accountId = payload.optString("accountId").trim()
-        val idempotencyKey = payload.optString("idempotencyKey").trim()
-        val amountEb = payload.optInt("amountEb", -1)
-        val missionId = payload.optString("missionId", "cemk_the_jacket")
-        val rewardId = payload.optString("rewardId", "")
+        val idempotencyKey = payload.optString("idempotencyKey", payload.optString("transactionId")).trim()
+        val amountEb = if (payload.has("amountEb")) payload.optInt("amountEb", -1) else payload.optInt("amount", -1)
+        val missionId = payload.optString("missionId", payload.optString("adventure", "cemk_the_jacket"))
+        val rewardId = payload.optString("rewardId", payload.optString("rewardSource", ""))
+        val crewSize = payload.optInt("crewSize", 1)
+        val itemIds = payload.optJSONArray("itemIds") ?: JSONArray()
+        val currency = payload.optString("currency", "EUR")
+
         if (accountId.isEmpty() || idempotencyKey.isEmpty() || amountEb <= 0) {
             return JSONObject().put("ok", false).put("resolved", false).put("blocked", true).put("reason", "INVALID_WALLET_CREDIT_REQUEST")
         }
@@ -2967,19 +3062,27 @@ class BarbaraRuntime(private val context: Context) {
             saveCharacter(charId, charObj.toString())
         }
 
-        val txId = "tx-${UUID.nameUUIDFromBytes(idempotencyKey.toByteArray(Charsets.UTF_8))}"
+        val txId = if (payload.has("transactionId") && payload.optString("transactionId").isNotBlank()) payload.optString("transactionId") else "tx-${UUID.nameUUIDFromBytes(idempotencyKey.toByteArray(Charsets.UTF_8))}"
         val receipt = JSONObject()
             .put("ok", true)
             .put("resolved", true)
             .put("blocked", false)
-            .put("status", "CREDITED")
+            .put("durable", true)
+            .put("status", "committed")
             .put("authority", "barbara-wallet-ledger")
             .put("transactionId", txId)
             .put("idempotencyKey", idempotencyKey)
+            .put("campaignId", payload.optString("campaignId", "cemk_campaign"))
             .put("accountId", accountId)
             .put("characterId", charId)
+            .put("adventure", missionId)
             .put("missionId", missionId)
+            .put("rewardSource", rewardId)
             .put("rewardId", rewardId)
+            .put("crewSize", crewSize)
+            .put("itemIds", itemIds)
+            .put("currency", currency)
+            .put("amount", amountEb)
             .put("amountEb", amountEb)
             .put("balanceAfterEb", balanceAfter)
             .put("committedAtEpochMs", System.currentTimeMillis())
@@ -2987,17 +3090,21 @@ class BarbaraRuntime(private val context: Context) {
         walletPrefs.edit()
             .putString("tx:$idempotencyKey", receipt.toString())
             .putString("tx:$txId", receipt.toString())
-            .apply()
+            .commit()
 
         return receipt
     }
 
     fun verifyRewardEligibility(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
-        val rewardId = payload.optString("rewardId").trim()
-        val amountEb = payload.optInt("amountEb", 0)
+        val rewardId = payload.optString("rewardId", payload.optString("rewardSource")).trim()
+        val amountEb = if (payload.has("amountEb")) payload.optInt("amountEb", 0) else payload.optInt("amount", 0)
         val charId = payload.optString("characterId").ifBlank { activeCharacterId().orEmpty() }
         if (rewardId.isEmpty() || amountEb <= 0) {
             return JSONObject().put("ok", false).put("resolved", false).put("eligible", false).put("reason", "INVALID_REWARD_PARAMETERS")
+        }
+        val rawChar = if (charId.isNotBlank()) storedCharacter(charId) else null
+        if (rawChar == null) {
+            return JSONObject().put("ok", false).put("resolved", false).put("eligible", false).put("reason", "CHARACTER_NOT_FOUND")
         }
         return JSONObject()
             .put("ok", true)
@@ -3016,17 +3123,21 @@ class BarbaraRuntime(private val context: Context) {
             return JSONObject().put("ok", false).put("resolved", false).put("reason", "INVALID_DOWNTIME_DAYS")
         }
         val raw = if (charId.isNotBlank()) storedCharacter(charId) else null
-        var nextDay = 1 + days
-        if (raw != null) {
-            val c = JSONObject(raw)
-            val campaign = campaignStateOf(c)
-            val clock = campaign.optJSONObject("worldClock") ?: JSONObject().also { campaign.put("worldClock", it) }
-            val beforeDay = clock.optInt("day", 1)
-            nextDay = beforeDay + days
-            clock.put("day", nextDay)
-            clock.put("elapsedMinutes", clock.optInt("elapsedMinutes", 0) + days * 1440)
-            saveCharacter(charId, c.toString())
+        if (raw == null) {
+            return JSONObject().put("ok", false).put("resolved", false).put("reason", "CHARACTER_NOT_FOUND")
         }
+        val c = JSONObject(raw)
+        val clock = normalizedWorldClock(c)
+        val beforeDay = clock.optInt("day", 1)
+        val nextDay = beforeDay + days
+        val newMinutes = clock.optLong("elapsedMinutes", 0L) + (days.toLong() * 1440L)
+        clock.put("day", nextDay)
+        clock.put("elapsedMinutes", newMinutes)
+        clock.put("elapsedSeconds", newMinutes * 60L)
+        applyRestHealing(c, days)
+        expireStreetDrugsForClock(c, newMinutes)
+        saveCharacter(charId, c.toString())
+
         return JSONObject()
             .put("ok", true)
             .put("resolved", true)
@@ -3034,18 +3145,39 @@ class BarbaraRuntime(private val context: Context) {
             .put("authority", "barbara-world-clock")
             .put("daysAdvanced", days)
             .put("currentDay", nextDay)
+            .put("elapsedMinutes", newMinutes)
+            .put("persisted", true)
     }
 
     fun resolveAdventureRuleAction(payload: JSONObject): JSONObject = synchronized(canonicalTurnLock) {
         val action = payload.optJSONObject("action") ?: JSONObject()
-        val type = action.optString("type").uppercase()
+        val type = action.optString("type").uppercase().trim()
         val actionId = action.optString("id", "rule-${UUID.randomUUID()}")
+
         val charId = payload.optString("characterId").ifBlank { activeCharacterId().orEmpty() }
-        val raw = if (charId.isNotBlank()) storedCharacter(charId) else null
-        val c = raw?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
-        val stats = c.optJSONObject("stats") ?: JSONObject()
-        val skills = c.optJSONObject("skills") ?: JSONObject()
-        val derived = c.optJSONObject("derived") ?: JSONObject()
+        if (charId.isBlank()) {
+            return JSONObject()
+                .put("ok", false).put("resolved", false).put("blocked", true)
+                .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                .put("reason", "CHARACTER_ID_REQUIRED")
+                .put("diagnostic", "Ação de regra exige identificador de personagem válido")
+        }
+        val rawChar = storedCharacter(charId)
+        if (rawChar == null) {
+            return JSONObject()
+                .put("ok", false).put("resolved", false).put("blocked", true)
+                .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                .put("reason", "CHARACTER_NOT_FOUND")
+                .put("diagnostic", "Personagem '$charId' não encontrado no armazenamento durável SQLite")
+        }
+        val c = JSONObject(rawChar)
+        val stats = c.optJSONObject("stats") ?: return JSONObject()
+            .put("ok", false).put("resolved", false).put("blocked", true)
+            .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+            .put("reason", "INVALID_CHARACTER_STATS")
+            .put("diagnostic", "Ficha do personagem '$charId' não possui bloco de atributos stats")
+        val skills = c.optJSONObject("skills") ?: JSONObject().also { c.put("skills", it) }
+        val derived = c.optJSONObject("derived") ?: JSONObject().also { c.put("derived", it) }
 
         // Canonical skill to governing stat mapping (Core Book v1.25 pp. 130-142)
         val skillStatMap = mapOf(
@@ -3063,29 +3195,23 @@ class BarbaraRuntime(private val context: Context) {
         )
 
         // Wound state modifier (Core Book p. 186): Seriously Wounded = -2, Mortally Wounded = -4
-        val currentHp = derived.optInt("hp", c.optInt("hp", 40))
         val maxHp = derived.optInt("maxHp", c.optInt("maxHp", 40))
+        val currentHp = derived.optInt("hp", c.optInt("hp", maxHp))
         val woundPenalty = when {
             currentHp <= 0 -> -4
             currentHp <= (maxHp + 1) / 2 -> -2
             else -> 0
         }
 
-        // Helper to lookup character skill rank
         fun skillRank(name: String): Int {
             val key = name.trim().lowercase().replace(" ", "_")
             return skills.optInt(key, skills.optInt(name.trim(), skills.optInt(name.trim().lowercase(), 0)))
         }
 
-        val dv = action.optInt("difficulty", action.optInt("dv", 13))
-        val rollObj = rollCriticalD10()
-        val rollTotal = rollObj.getInt("total")
-
         when (type) {
             "DICE_ROLL" -> {
                 val formula = action.optString("formula", "1d10")
-                val sides = if (formula.contains("d6")) 6 else 10
-                val rollVal = kotlin.random.Random.nextInt(1, sides + 1)
+                val eval = evaluateDiceExpression(formula)
                 return JSONObject()
                     .put("ok", true)
                     .put("resolved", true)
@@ -3094,208 +3220,440 @@ class BarbaraRuntime(private val context: Context) {
                     .put("actionId", actionId)
                     .put("type", type)
                     .put("formula", formula)
-                    .put("roll", rollVal)
-                    .put("total", rollVal)
+                    .put("rolls", JSONArray(eval.rolls))
+                    .put("diceCount", eval.count)
+                    .put("sides", eval.sides)
+                    .put("sixesCount", eval.sixesCount)
+                    .put("isCriticalInjuryTrigger", eval.isCriticalInjuryTrigger)
+                    .put("naturalD10", eval.naturalD10 ?: JSONObject.NULL)
+                    .put("extraD10", eval.extraD10 ?: JSONObject.NULL)
+                    .put("isExplosion", eval.isD10Explosion)
+                    .put("isBotch", eval.isD10Botch)
+                    .put("roll", eval.total)
+                    .put("total", eval.total)
                     .put("passed", true)
                     .put("outcome", "SUCCESS")
+            }
+
+            "COMBAT_START", "COMBAT", "COMBAT_SEQUENCE", "TACTICAL_COMBAT_SEQUENCE", "CLIMAX_COMBAT", "SECURITY_NET_AND_COMBAT", "COMBAT_IF_TRIGGERED" -> {
+                val refVal = stats.optInt("REF", -1)
+                if (refVal < 0) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                        .put("reason", "MISSING_REF_STAT")
+                        .put("diagnostic", "Personagem '$charId' não possui atributo REF para iniciativa")
+                }
+                val d10 = evaluateDiceExpression("1d10")
+                val initiative = refVal + d10.total + woundPenalty
+                val combatState = c.optJSONObject("combatState") ?: JSONObject().also { c.put("combatState", it) }
+                val flow = combatState.optJSONObject("flow") ?: JSONObject().also { combatState.put("flow", it) }
+                flow.put("active", true).put("round", 1).put("turn", 1).put("playerInitiative", initiative)
+                runBlocking(Dispatchers.IO) { characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis())) }
+
+                return JSONObject()
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("initiative", initiative).put("roll", d10.total).put("statRef", refVal).put("woundPenalty", woundPenalty)
+                    .put("total", initiative).put("passed", true).put("outcome", "COMBAT_READY").put("persisted", true)
+            }
+
+            "COMBAT_RESOLUTION", "DAMAGE" -> {
+                val formula = action.optString("formula", if (action.has("damageDice")) "${action.getInt("damageDice")}d6" else "3d6")
+                val eval = evaluateDiceExpression(formula)
+                val rawDamage = eval.total
+                val armorObj = c.optJSONObject("armor")
+                val bodyArmor = armorObj?.optJSONObject("body")
+                val currentSp = bodyArmor?.optInt("sp", derived.optInt("sp", 0)) ?: derived.optInt("sp", 0)
+                val isMelee = action.optBoolean("isMelee", action.optString("attackType") in listOf("melee", "brawling", "martial_arts"))
+                val isAp = action.optBoolean("armorPiercing", action.optBoolean("isAp", false))
+                val effectiveSp = if (isMelee) (currentSp + 1) / 2 else currentSp
+
+                var penetratingDamage = 0
+                var spAblation = 0
+                var critBonusHp = 0
+                var critName: String? = null
+                var critEffect: String? = null
+
+                if (rawDamage > effectiveSp) {
+                    penetratingDamage = rawDamage - effectiveSp
+                    spAblation = if (isAp) 2 else 1
+                    if (eval.isCriticalInjuryTrigger) {
+                        critBonusHp = 5
+                        val critRoll = kotlin.random.Random.nextInt(1, 7) + kotlin.random.Random.nextInt(1, 7)
+                        val (injName, injEff) = when (critRoll) {
+                            2 -> "Dismembered Arm" to "Braço decepado. Solta itens e não pode usar o braço."
+                            3 -> "Dismembered Leg" to "Perna decepada. MOVE reduzido à metade, não pode pular."
+                            4 -> "Broken Ribs" to "Costelas quebradas. Sofre dano ao se mover mais de 4m."
+                            5 -> "Broken Arm" to "Braço quebrado. Não pode empunhar armas de duas mãos."
+                            6 -> "Foreign Object" to "Objeto estranho alojado. Sofre 1 de dano ao se mover mais de 4m."
+                            7 -> "Whiplash" to "Efeito chicote. Sofre -2 em todas as ações por 1 rodada."
+                            8 -> "Cracked Skull" to "Crânio rachado. Dano adicional à cabeça."
+                            9 -> "Damaged Eye" to "Olho danificado. -2 em ações de mira e percepção visual."
+                            10 -> "Concussion" to "Concussão. -2 em todas as ações baseadas em INT e Reflexos."
+                            11 -> "Torn Muscle" to "Músculo rompido. -2 em ações de combate corpo a corpo."
+                            else -> "Spinal Injury" to "Lesão espinhal. Prone e não pode se levantar sem ação."
+                        }
+                        critName = injName
+                        critEffect = injEff
+                    }
+                }
+
+                val totalHpLoss = penetratingDamage + critBonusHp
+                val newHp = maxOf(0, currentHp - totalHpLoss)
+                val newSp = maxOf(0, currentSp - spAblation)
+
+                derived.put("hp", newHp)
+                derived.put("sp", newSp)
+                c.put("hp", newHp)
+                if (bodyArmor != null) bodyArmor.put("sp", newSp)
+
+                if (critName != null) {
+                    val injuries = derived.optJSONArray("criticalInjuries") ?: JSONArray().also { derived.put("criticalInjuries", it) }
+                    injuries.put(JSONObject().put("name", critName).put("effect", critEffect).put("atEpochMs", System.currentTimeMillis()))
+                }
+
+                val newWoundState = when {
+                    newHp <= 0 -> "Mortally Wounded"
+                    newHp <= (maxHp + 1) / 2 -> "Seriously Wounded"
+                    newHp < maxHp -> "Lightly Wounded"
+                    else -> "Unhurt"
+                }
+                derived.put("woundState", newWoundState)
+
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+
+                return JSONObject()
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("formula", formula).put("rolls", JSONArray(eval.rolls)).put("rawDamage", rawDamage)
+                    .put("spBefore", currentSp).put("effectiveSp", effectiveSp).put("spAblated", spAblation).put("spAfter", newSp)
+                    .put("penetratingDamage", penetratingDamage).put("critBonusHp", critBonusHp)
+                    .put("criticalInjuryTriggered", eval.isCriticalInjuryTrigger).put("criticalInjuryName", critName ?: JSONObject.NULL)
+                    .put("criticalInjuryEffect", critEffect ?: JSONObject.NULL)
+                    .put("hpBefore", currentHp).put("hpAfter", newHp).put("maxHp", maxHp).put("woundState", newWoundState)
+                    .put("passed", true).put("outcome", "RESOLVED").put("persisted", true)
             }
 
             "OPPOSED_CHECK", "BAR_BRAWL_OPPOSED_CHECK" -> {
                 val attackerSkill = action.optString("skill", "Brawling")
                 val statName = skillStatMap[attackerSkill.lowercase()] ?: "DEX"
-                val statVal = stats.optInt(statName, 6)
+                val statVal = stats.optInt(statName, -1)
+                if (statVal < 0) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("reason", "MISSING_STAT")
+                        .put("diagnostic", "Atributo '$statName' ausente na ficha")
+                }
                 val skillVal = skillRank(attackerSkill)
-                val attackerTotal = statVal + skillVal + rollTotal + woundPenalty
-                val defRollObj = rollCriticalD10()
-                val defenderRoll = defRollObj.getInt("total")
+                val atkD10 = evaluateDiceExpression("1d10")
+                val attackerTotal = statVal + skillVal + atkD10.total + woundPenalty
+
+                val defD10 = evaluateDiceExpression("1d10")
                 val defenderStat = action.optInt("defenderStat", action.optInt("defenderBase", 10))
-                val defenderTotal = defenderStat + defenderRoll
+                val defenderTotal = defenderStat + defD10.total
+
                 // Core Book p. 129: on tie Defender always wins
                 val passed = attackerTotal > defenderTotal
                 return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("skill", attackerSkill)
-                    .put("stat", statName)
-                    .put("statVal", statVal)
-                    .put("skillVal", skillVal)
-                    .put("attackerRoll", rollTotal)
-                    .put("attackerTotal", attackerTotal)
-                    .put("defenderTotal", defenderTotal)
-                    .put("total", attackerTotal)
-                    .put("dv", defenderTotal)
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("skill", attackerSkill).put("stat", statName).put("statVal", statVal).put("skillVal", skillVal)
+                    .put("attackerRoll", atkD10.total).put("attackerTotal", attackerTotal)
+                    .put("defenderStat", defenderStat).put("defenderRoll", defD10.total).put("defenderTotal", defenderTotal)
+                    .put("total", attackerTotal).put("dv", defenderTotal)
                     .put("passed", passed)
                     .put("outcome", if (passed) "SUCCESS" else "FAILURE")
-            }
-
-            "COMBAT_START", "COMBAT", "COMBAT_SEQUENCE", "TACTICAL_COMBAT_SEQUENCE", "CLIMAX_COMBAT", "SECURITY_NET_AND_COMBAT", "COMBAT_IF_TRIGGERED" -> {
-                val refVal = stats.optInt("REF", 6)
-                val initiative = refVal + rollTotal + woundPenalty
-                return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("initiative", initiative)
-                    .put("total", initiative)
-                    .put("passed", true)
-                    .put("outcome", "COMBAT_READY")
-            }
-
-            "COMBAT_RESOLUTION", "DAMAGE" -> {
-                val dmgDice = action.optInt("damageDice", 3)
-                var dmgTotal = 0
-                for (i in 0 until dmgDice) dmgTotal += kotlin.random.Random.nextInt(1, 7)
-                return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("damage", dmgTotal)
-                    .put("total", dmgTotal)
-                    .put("passed", true)
-                    .put("outcome", "RESOLVED")
             }
 
             "NETRUN", "NET_ARCHITECTURE", "INTERFACE_CHECKS" -> {
-                val rank = c.optInt("roleAbilityRank", 4)
-                val total = rank + rollTotal + woundPenalty
-                val passed = total >= dv
+                val role = c.optString("role", "").lowercase()
+                val interfaceRank = c.optInt("roleAbilityRank", 0)
+                if (role != "netrunner" || interfaceRank < 1) {
+                    return JSONObject()
+                        .put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                        .put("reason", "NOT_A_NETRUNNER")
+                        .put("diagnostic", "Personagem '$charId' possui Role '$role' e Interface $interfaceRank; Netrunning exige Role Netrunner com Interface >= 1")
+                }
+                val netActionBudget = when {
+                    interfaceRank <= 2 -> 2
+                    interfaceRank <= 6 -> 3
+                    interfaceRank <= 9 -> 4
+                    else -> 5
+                }
+                val archId = action.optString("architectureId", action.optString("archId", "ssp_net_arch_01"))
+                val netOperation = action.optString("operation", action.optString("netAction", "PATHFINDER")).uppercase()
+                if (!action.has("dv") && !action.has("difficulty")) {
+                    return JSONObject()
+                        .put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                        .put("reason", "MISSING_DIFFICULTY_DV")
+                        .put("diagnostic", "Ação NET '$netOperation' exige parâmetro de dificuldade DV")
+                }
+                val dvVal = action.optInt("dv", action.optInt("difficulty", 6))
+                val d10 = evaluateDiceExpression("1d10")
+                val total = interfaceRank + d10.total + woundPenalty
+                val passed = total > dvVal // Beat the DV (Core p. 129)
+
+                val campaign = campaignStateOf(c)
+                val netState = campaign.optJSONObject("netrunState") ?: JSONObject().also { campaign.put("netrunState", it) }
+                netState.put("activeArchitecture", archId)
+                netState.put("interfaceRank", interfaceRank)
+                netState.put("netActionsBudget", netActionBudget)
+                netState.put("lastOperation", netOperation)
+                netState.put("lastPassed", passed)
+                if (passed) {
+                    val cleared = netState.optJSONArray("clearedFloors") ?: JSONArray().also { netState.put("clearedFloors", it) }
+                    val currentFloor = action.optInt("floor", 1)
+                    if ((0 until cleared.length()).none { cleared.getInt(it) == currentFloor }) {
+                        cleared.put(currentFloor)
+                    }
+                    netState.put("currentFloor", currentFloor)
+                }
+
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+
                 return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("interfaceRank", rank)
-                    .put("roll", rollTotal)
-                    .put("total", total)
-                    .put("dv", dv)
-                    .put("passed", passed)
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("architectureId", archId).put("netOperation", netOperation)
+                    .put("interfaceRank", interfaceRank).put("netActionsBudget", netActionBudget)
+                    .put("roll", d10.total).put("total", total).put("dv", dvVal).put("passed", passed)
+                    .put("woundPenalty", woundPenalty)
                     .put("outcome", if (passed) "SUCCESS" else "FAILURE")
+                    .put("persisted", true)
             }
 
             "HUMANITY_CHECK" -> {
                 val currentHumanity = derived.optInt("humanity", c.optInt("humanity", 50))
-                val emp = stats.optInt("EMP", 5)
+                val emp = stats.optInt("EMP", -1)
+                if (emp < 0) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("reason", "MISSING_EMP_STAT")
+                }
                 return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("humanity", currentHumanity)
-                    .put("emp", emp)
-                    .put("passed", emp > 0)
-                    .put("outcome", if (emp > 0) "SUCCESS" else "CYBERPSYCHOSIS")
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("humanity", currentHumanity).put("emp", emp)
+                    .put("passed", emp > 0).put("outcome", if (emp > 0) "SUCCESS" else "CYBERPSYCHOSIS")
             }
 
             "WORLD_TIME_ADVANCE" -> {
-                val minutes = action.optInt("minutes", action.optInt("advanceMinutes", 60))
-                val campaign = campaignStateOf(c)
-                val clock = campaign.optJSONObject("worldClock") ?: JSONObject().also { campaign.put("worldClock", it) }
+                val idempotencyKey = action.optString("idempotencyKey", actionId)
+                val existingTx = walletPrefs.getString("clock_tx:$idempotencyKey", null)
+                if (existingTx != null) {
+                    return JSONObject(existingTx).put("replayed", true)
+                }
+                val minutes = action.optInt("minutes", action.optInt("advanceMinutes", action.optInt("days", 0) * 1440).coerceAtLeast(1))
+                val clock = normalizedWorldClock(c)
                 val prevElapsed = clock.optLong("elapsedMinutes", 0L)
                 val newElapsed = prevElapsed + minutes
                 clock.put("elapsedMinutes", newElapsed)
-                clock.put("day", newElapsed / 1440L + 1L)
+                clock.put("elapsedSeconds", newElapsed * 60L)
+                val day = (newElapsed / 1440L) + 1L
+                clock.put("day", day)
+
+                val daysAdvanced = (minutes / 1440).toInt()
+                if (daysAdvanced > 0) {
+                    applyRestHealing(c, daysAdvanced)
+                }
+                expireStreetDrugsForClock(c, newElapsed)
+
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+
+                val res = JSONObject()
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-world-clock").put("actionId", actionId).put("type", type)
+                    .put("elapsedMinutes", newElapsed).put("daysAdvanced", daysAdvanced).put("day", day)
+                    .put("passed", true).put("outcome", "TIME_ADVANCED").put("persisted", true)
+
+                walletPrefs.edit().putString("clock_tx:$idempotencyKey", res.toString()).commit()
+                return res
+            }
+
+            "REST" -> {
+                val days = action.optInt("days", 1)
+                val healResult = applyRestHealing(c, days)
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
                 return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("elapsedMinutes", newElapsed)
-                    .put("daysAdvanced", minutes / 1440)
-                    .put("passed", true)
-                    .put("outcome", "TIME_ADVANCED")
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("days", days).put("healedHp", healResult.optInt("healed", 0))
+                    .put("hpAfter", derived.optInt("hp", currentHp))
+                    .put("passed", true).put("outcome", "REST_COMPLETED").put("persisted", true)
+            }
+
+            "PURCHASE" -> {
+                val price = action.optInt("price", action.optInt("amount", -1))
+                if (price < 0) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("reason", "INVALID_PURCHASE_PRICE")
+                }
+                val currentCash = c.optInt("eurobucks", c.optInt("cash", 0))
+                if (currentCash < price) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("reason", "INSUFFICIENT_FUNDS")
+                        .put("diagnostic", "Eurobucks insuficientes: possui $currentCash, requer $price")
+                }
+                val newCash = currentCash - price
+                c.put("eurobucks", newCash)
+                c.put("cash", newCash)
+                val itemId = action.optString("itemId", "gear-${UUID.randomUUID()}")
+                val inv = c.optJSONArray("inventory") ?: JSONArray().also { c.put("inventory", it) }
+                inv.put(JSONObject().put("itemId", itemId).put("quantity", action.optInt("quantity", 1)).put("equipped", false))
+
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+                return JSONObject()
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("itemId", itemId).put("price", price).put("cashBefore", currentCash).put("cashAfter", newCash)
+                    .put("passed", true).put("outcome", "PURCHASED").put("persisted", true)
+            }
+
+            "SALE" -> {
+                val itemId = action.optString("itemId")
+                val inv = c.optJSONArray("inventory") ?: JSONArray()
+                var foundIdx = -1
+                for (i in 0 until inv.length()) {
+                    if (inv.optJSONObject(i)?.optString("itemId") == itemId) {
+                        foundIdx = i
+                        break
+                    }
+                }
+                val price = action.optInt("price", action.optInt("amount", 50))
+                val currentCash = c.optInt("eurobucks", c.optInt("cash", 0))
+                val newCash = currentCash + price
+                c.put("eurobucks", newCash)
+                c.put("cash", newCash)
+                if (foundIdx != -1) {
+                    val row = inv.getJSONObject(foundIdx)
+                    val q = row.optInt("quantity", 1)
+                    if (q > 1) row.put("quantity", q - 1) else inv.remove(foundIdx)
+                }
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+                return JSONObject()
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("itemId", itemId).put("salePrice", price).put("cashBefore", currentCash).put("cashAfter", newCash)
+                    .put("passed", true).put("outcome", "SOLD").put("persisted", true)
+            }
+
+            "CYBERWARE_INSTALL" -> {
+                val cwId = action.optString("cyberwareId", action.optString("itemId"))
+                val hlCost = action.optInt("humanityLoss", action.optInt("hl", 7))
+                val currentHumanity = derived.optInt("humanity", 50)
+                val newHumanity = maxOf(0, currentHumanity - hlCost)
+                derived.put("humanity", newHumanity)
+                val cwArray = c.optJSONArray("cyberware") ?: JSONArray().also { c.put("cyberware", it) }
+                cwArray.put(JSONObject().put("id", cwId).put("installed", true).put("hl", hlCost))
+
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+                return JSONObject()
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("cyberwareId", cwId).put("humanityLoss", hlCost).put("humanityAfter", newHumanity)
+                    .put("passed", true).put("outcome", "INSTALLED").put("persisted", true)
             }
 
             "ROLLER_DERBY" -> {
-                val dexVal = stats.optInt("DEX", 6)
+                val dexVal = stats.optInt("DEX", -1)
+                if (dexVal < 0) return JSONObject().put("ok", false).put("resolved", false).put("blocked", true).put("reason", "MISSING_DEX_STAT")
                 val athleticsVal = skillRank("Athletics")
-                val total = dexVal + athleticsVal + rollTotal + woundPenalty
-                val passed = total >= dv
+                val d10 = evaluateDiceExpression("1d10")
+                val total = dexVal + athleticsVal + d10.total + woundPenalty
+                val dvVal = action.optInt("dv", action.optInt("difficulty", 13))
+                val passed = total > dvVal
                 return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("skill", "Athletics")
-                    .put("total", total)
-                    .put("dv", dv)
-                    .put("passed", passed)
-                    .put("outcome", if (passed) "SUCCESS" else "FAILURE")
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("skill", "Athletics").put("roll", d10.total).put("total", total).put("dv", dvVal)
+                    .put("passed", passed).put("outcome", if (passed) "SUCCESS" else "FAILURE")
             }
 
             "CHASE", "ESCAPE_SEQUENCE" -> {
-                val refVal = stats.optInt("REF", 6)
+                val refVal = stats.optInt("REF", -1)
+                if (refVal < 0) return JSONObject().put("ok", false).put("resolved", false).put("blocked", true).put("reason", "MISSING_REF_STAT")
                 val driveVal = skillRank("Drive Land Vehicle")
-                val total = refVal + driveVal + rollTotal + woundPenalty
-                val passed = total >= dv
+                val d10 = evaluateDiceExpression("1d10")
+                val total = refVal + driveVal + d10.total + woundPenalty
+                val dvVal = action.optInt("dv", action.optInt("difficulty", 13))
+                val passed = total > dvVal
                 return JSONObject()
-                    .put("ok", true)
-                    .put("resolved", true)
-                    .put("blocked", false)
-                    .put("authority", "barbara-host-bridge")
-                    .put("actionId", actionId)
-                    .put("type", type)
-                    .put("skill", "Drive Land Vehicle")
-                    .put("total", total)
-                    .put("dv", dv)
-                    .put("passed", passed)
-                    .put("outcome", if (passed) "SUCCESS" else "FAILURE")
+                    .put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("skill", "Drive Land Vehicle").put("roll", d10.total).put("total", total).put("dv", dvVal)
+                    .put("passed", passed).put("outcome", if (passed) "SUCCESS" else "FAILURE")
             }
 
-            else -> {
-                // Default: canonical skill check resolution
-                var rawSkill = action.optString("skill", "Perception")
-                if (type == "CYBERTECH_CHECK") rawSkill = "Cybertech"
-                if (type == "ATHLETICS_CHECK") rawSkill = "Athletics"
-                if (type == "DISARM") rawSkill = "Melee Weapon"
-                if (type == "PARAMEDIC_OR_MEDICAL_TECH_CHECK") rawSkill = "Paramedic"
-                if (type == "DEDUCTION_OR_EDUCATION_CHECK") rawSkill = "Deduction"
-                if (type == "CARGO_PROTECTION") rawSkill = "Tactics"
+            "SKILL_CHECK", "SKILL_CHECKS", "CYBERTECH_CHECK", "ATHLETICS_CHECK", "DISARM", "PARAMEDIC_OR_MEDICAL_TECH_CHECK", "DEDUCTION_OR_EDUCATION_CHECK", "CARGO_PROTECTION" -> {
+                var rawSkill = action.optString("skill", "")
+                if (rawSkill.isBlank()) {
+                    rawSkill = when (type) {
+                        "CYBERTECH_CHECK" -> "Cybertech"
+                        "ATHLETICS_CHECK" -> "Athletics"
+                        "DISARM" -> "Melee Weapon"
+                        "PARAMEDIC_OR_MEDICAL_TECH_CHECK" -> "Paramedic"
+                        "DEDUCTION_OR_EDUCATION_CHECK" -> "Deduction"
+                        "CARGO_PROTECTION" -> "Tactics"
+                        else -> "Perception"
+                    }
+                }
 
-                // Parse multi-skill options (e.g. "Streetwise / Trading / Persuasion / Bribery / plausible alternative")
+                if (!action.has("dv") && !action.has("difficulty")) {
+                    return JSONObject()
+                        .put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                        .put("reason", "MISSING_DIFFICULTY_DV")
+                        .put("diagnostic", "Ação de perícia '$rawSkill' exige parâmetro explícito de dificuldade DV")
+                }
+                val dvVal = action.optInt("dv", action.optInt("difficulty", 13))
+
                 val candidates = rawSkill.split("/", "|").map { it.trim() }.filter { it.isNotBlank() && !it.contains("alternative", ignoreCase = true) }
                 var bestSkill = if (candidates.isNotEmpty()) candidates.first() else rawSkill
                 var bestTotal = -999
                 var bestStatName = "INT"
-                var bestStatVal = 6
+                var bestStatVal = 0
                 var bestSkillVal = 0
+                val d10 = evaluateDiceExpression("1d10")
 
                 for (cand in (if (candidates.isNotEmpty()) candidates else listOf(rawSkill))) {
-                    val normCand = cand.lowercase()
-                    val sName = skillStatMap[normCand] ?: "INT"
-                    val sVal = stats.optInt(sName, 6)
-                    val skVal = skillRank(cand)
-                    if (sVal + skVal > bestTotal) {
-                        bestTotal = sVal + skVal
-                        bestSkill = cand
-                        bestStatName = sName
-                        bestStatVal = sVal
-                        bestSkillVal = skVal
+                    val sName = skillStatMap[cand.lowercase()] ?: "INT"
+                    val sVal = stats.optInt(sName, -1)
+                    if (sVal >= 0) {
+                        val skVal = skillRank(cand)
+                        val curTotal = sVal + skVal + d10.total + woundPenalty
+                        if (curTotal > bestTotal) {
+                            bestTotal = curTotal
+                            bestSkill = cand
+                            bestStatName = sName
+                            bestStatVal = sVal
+                            bestSkillVal = skVal
+                        }
                     }
                 }
 
-                // Core Book v1.25 p. 129 formula: STAT + Skill + 1d10_crit + modifiers
-                val checkTotal = bestStatVal + bestSkillVal + rollTotal + woundPenalty
-                // Beat the DV (total > dv)
-                val passed = checkTotal > dv
+                if (bestTotal == -999) {
+                    return JSONObject()
+                        .put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                        .put("reason", "MISSING_SKILL_STAT")
+                        .put("diagnostic", "Nenhum atributo associado à perícia '$rawSkill' foi encontrado na ficha")
+                }
 
+                val passed = bestTotal > dvVal // Beat the DV (Core p. 129)
                 return JSONObject()
                     .put("ok", true)
                     .put("resolved", true)
@@ -3307,14 +3665,25 @@ class BarbaraRuntime(private val context: Context) {
                     .put("stat", bestStatName)
                     .put("statVal", bestStatVal)
                     .put("skillVal", bestSkillVal)
-                    .put("dv", dv)
-                    .put("roll", rollTotal)
-                    .put("natural", rollObj.getInt("natural"))
-                    .put("critical", rollObj.optString("critical"))
+                    .put("roll", d10.total)
                     .put("woundPenalty", woundPenalty)
-                    .put("total", checkTotal)
+                    .put("total", bestTotal)
+                    .put("dv", dvVal)
                     .put("passed", passed)
                     .put("outcome", if (passed) "SUCCESS" else "FAILURE")
+            }
+
+            else -> {
+                // FAIL-CLOSED: No silent fallback to Perception or fake rolls!
+                return JSONObject()
+                    .put("ok", false)
+                    .put("resolved", false)
+                    .put("blocked", true)
+                    .put("authority", "barbara-host-bridge")
+                    .put("actionId", actionId)
+                    .put("type", type)
+                    .put("reason", "UNRECOGNIZED_RULE_ACTION")
+                    .put("diagnostic", "Tipo de ação de regra '$type' não possui resolvedor legítimo registrado no host")
             }
         }
     }

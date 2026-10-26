@@ -1,34 +1,55 @@
-# Cyberpunk RED R5.81 / 4.1.81 — Relatório de Regressões e Verificações
+# Cyberpunk RED R5.81 / 4.1.82 — Relatório de Regressões e Verificações
 
 **Data:** 26/10/2026  
-**Versão Alvo:** 4.1.81 (build 4181)  
-**Branch de Integração:** `audit/cpred-r581-rules-parity`  
+**Versão Alvo:** 4.1.82 (build 4182)  
+**Branch de Continuidade:** `audit/cpred-r581-rules-parity`  
 **Commit Base:** `f4fdca25b36cc4839961cfd9c9781c511add0e26`  
 
 ---
 
-## 1. Suíte de Testes Automatizados (294/294 PASS)
+## 1. Suíte de Testes Automatizados (314/314 PASS)
 
-Todos os 294 testes de regressão do motor de aventuras continuam passando com 100% de aprovação (0 falhas, 0 skips, 0 cancelamentos):
+Todos os 314 testes automatizados do motor de aventuras e regras executam com 100% de aprovação (0 falhas, 0 cancelamentos, 0 skips):
 
-* **Tempo de execução:** ~1.8 segundos no Node.js v22.
+* **Tempo de execução:** ~1.9 segundos no Node.js v22.
 * **Componentes cobertos:**
   1. `adventure_engine.test.mjs`: Ciclo de vida atômico, resolução de eventos, bloqueio de consequências por falha em `ruleActions`, preservação de estado em reabertura, relógio determinístico e separação estrita de segredos do GM frente à IA.
   2. `adventure_engine_v2.test.mjs`: Validação de 18 módulos oficiais, eventos UNTIL_SUCCESS e REPEATABLE, e bloqueio de regras quando o teste falha (`passed: false`).
   3. `cyberpunk_host_adapters_async_safety.test.mjs`: Rejeição estrita de recibos ambíguos ou com atribuição de autoridade a IA (`authority: 'ai'` / `'gemini'`), isolamento de troca de personagem durante chamadas assíncronas, e integridade de coordenadas Atlas 30x30.
-  4. `r572_full_closure.test.mjs`:
-     * Validação dos 18 módulos em `index.json` contra `CYBERPUNK_RULE_ACTIONS`.
-     * 10 pregens completos do Single Shot Pack web-jogáveis com armas, armaduras, cyberware e derivados conformes ao PDF.
-     * 6 NET Architectures oficiais funcionais.
-     * Rollback atômico diante de falha no `saveCharacter` (restauração de aventura e coordenadas no Atlas SQLite).
-     * Elflines Online EP1 executando criação e progressão de masmorra.
-     * Importação `braseiro.adventure/v1` com envelope selado e continuidade durável `braseiro.legacy/v1`.
+  4. `cpred_combat_parity_4181.test.mjs`:
+     * Penetração de dano vs SP de armadura corporal e ablação de blindagem (-1 geral, -2 para Armor Piercing).
+     * Ataques corpo a corpo ignorando metade da blindagem SP arredondada para cima.
+     * Gatilho de Ferimento Crítico quando dois ou mais d6s rolam 6 (aplicando +5 PV de dano bônus).
+     * Estados de ferimento: Unhurt, Lightly Wounded, Seriously Wounded (-2) e Mortally Wounded (-4 com Death Saves).
+     * Resolução de testes resistidos onde o Defensor vence empates (Core p. 129).
+  5. `cpred_netrun_parity_4181.test.mjs`:
+     * Orçamento de ações NET por rank de Interface (2 para 1-3, 3 para 4-6, 4 para 7-9, 5 para 10).
+     * Interface checks superando o DV (`Total > DV`).
+     * Validação estrutural das 6 arquiteturas oficiais do Single Shot Pack (pisos, DVs, ICEs).
+     * Safe Jack Out (limpo) vs Unsafe Jack Out (disparando ataques de todos os Black ICEs ativos).
+  6. `cpred_world_time_clock_4181.test.mjs`:
+     * Avanço determinístico de tempo com cálculo de dias cruzados (1440 min = 1 dia).
+     * Cura natural por dias de descanso pleno cruzados (1 dia = BODY PV recuperados para personagem estabilizado).
+  7. `cpred_negative_tests_4181.test.mjs`:
+     * Rejeição fail-closed de ações desconhecidas (`UNKNOWN_RULE_ACTION`).
+     * Rejeição de compra por saldo insuficiente em Eurobucks.
+     * Rejeição de venda de itens inexistentes ou equipados no inventário.
+  8. `cpred_the_jacket_wallet_4181.test.mjs`:
+     * Recibos duráveis com `status: "committed"` e `durable: true`.
+     * Reconciliação com `getTransaction` e chave de idempotência.
+     * Negação de recompensas com valores divergentes do plano oficial.
+  9. `cpred_single_shot_playable_4181.test.mjs`:
+     * Promoção dos 10 personagens pré-gerados do Single Shot Pack a fichas 100% jogáveis.
+     * Conferência dos atributos, perícias, armas, armaduras e derivadas contra o PDF oficial.
+  10. `cpred_economy_cyberware_4181.test.mjs`:
+      * 8 categorias canônicas de preço de mercado e alcance por rank de Fixer.
+      * Instalação de Cyberware com verificação de pré-requisitos cirúrgicos e perda de humanidade.
 
 ---
 
 ## 2. Contratos JVM e Testes Nativos
 
-* **Contratos Testados:** `ContractTest.java`
+* **Contratos Testados:** `ContractTest.java` e `BarbaraRuntime.kt`:
   - `PhysicalDiceEngine`: Simulação física dos dados 3D importados do Forbidden Lands com projeção das faces correspondentes ao resultado numérico.
   - `GeminiSpeechWire`: Serialização de requisição REST pura para voz cloud, remoção de tags SSML/vocais e decodificação PCM 24kHz.
   - `BraseiroAndroidTtsPolicy`: Política estrita de preservação do pacote Kokoro/Sherpa solicitado (`com.k2fsa.sherpa.onnx.tts.engine` e `.debug`), eliminando qualquer fallback silencioso.
@@ -36,32 +57,12 @@ Todos os 294 testes de regressão do motor de aventuras continuam passando com 1
 
 ---
 
-## 3. Auditoria do Call Graph e Ações de Regras (`CYBERPUNK_RULE_ACTIONS`)
-
-* **Problema Identificado no Baseline:**
-  O método nativo `resolveAdventureRuleAction` no `BarbaraRuntime.kt` continha um stub fixo (`val roll = 7`) e resolvia apenas `Perception` com INT/REF, ignorando o rolador d10 explosivo e todos os outros tipos de ação de regras declarados nos 18 módulos. Além disso, o timeout de fallback de evento no navegador era de 80ms, o que rejeitava interações assíncronas.
-* **Correções Implementadas:**
-  1. `BarbaraRuntime.kt`: Implementado resolvedor canônico multiação cobrindo todas as categorias de `CYBERPUNK_RULE_ACTIONS`:
-     - Resolução canônica de `SKILL_CHECK` usando o mapa de 66 perícias aos atributos oficiais do Core v1.25.
-     - Suporte a perícias compostas (ex: `"Streetwise / Trading / Persuasion"` ou `"Conversation|Persuasion"`), selecionando dinamicamente a melhor perícia do personagem.
-     - Cálculo de penalidades de ferimento (-2 para Seriously Wounded, -4 para Mortally Wounded).
-     - Rolagem de 1d10 com explosão crítica no 10 natural (+1d10) e desastre no 1 natural (-1d10) via `rollCriticalD10()`.
-     - Resolução de `OPPOSED_CHECK` / `BAR_BRAWL_OPPOSED_CHECK` com a regra oficial de empate (Defensor sempre vence, Core p. 129).
-     - Resolução de `COMBAT_START` e iniciativas (`REF + 1d10_crit + woundPenalty`).
-     - Resolução de `DICE_ROLL`, `NET_ARCHITECTURE`, `HUMANITY_CHECK`, `WORLD_TIME_ADVANCE`, `ROLLER_DERBY` e `CHASE`.
-  2. `cyberpunk_host_adapters.js`:
-     - Timeout de `requestBrowserResolver` aumentado de 80ms para 5000ms para permitir interação de UI/dados sem timeout precoce.
-  3. `adventure_engine_v2.js`:
-     - `requiredBlocked` agora verifica explicitamente `r?.passed === false || r?.success === false`, garantindo que um teste de regra obrigatório reprovado impeça a aplicação de consequências na aventura.
-
----
-
-## 4. Preservação de Dados e Atualização sobreposta
+## 3. Preservação de Dados e Atualização sobreposta
 
 * **Identificação de Pacote:** `com.braseiro.cyberpunkred`
-* **Version Code:** Atualizado de 4180 para 4181 (`versionCode = 4181`).
-* **Version Name:** Atualizado para `4.1.81` (`versionName = "4.1.81"`).
+* **Version Code:** 4182 (`versionCode = 4182`).
+* **Version Name:** 4.1.82 (`versionName = "4.1.82"`).
 * **Certificado de Assinatura:**
   - DN: `CN=Braseiro Stable Debug, O=Braseiro, C=BR`
   - SHA-256 Digest: `6aa87a24a2eb4762c3f493c9d5fddbf10b60cc8659a90423aed7cde8ae582bd3`
-  - Instalação direta sobre a versão 4.1.80 preservando todos os personagens, banco SQLite, preferências e campanhas.
+  - Instalação direta sobre versões anteriores sem perda de dados.

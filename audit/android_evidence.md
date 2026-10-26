@@ -1,16 +1,16 @@
-# Cyberpunk RED R5.81 / 4.1.81 — Evidências Android e Instrumentação
+# Cyberpunk RED R5.81 / 4.1.82 — Evidências Android e Instrumentação
 
 **Data:** 26/10/2026  
 **Pacote:** `com.braseiro.cyberpunkred`  
-**Versão:** `4.1.81` (build 4181)  
+**Versão:** `4.1.82` (build 4182)  
 
 ---
 
 ## 1. Verificação Criptográfica da Assinatura do APK
 
-* **Arquivo:** `BRASEIRO_CYBERPUNK_RED_4.1.81_ASSINADO.apk`
-* **Tamanho:** 266.343.874 bytes (~254 MB)
-* **SHA-256 do APK:** `b44ff671c69ae9a27a19d8b4ee83a6bbca0c3147d364d5e64c9dd4ddf0fddbb8`
+* **Arquivo:** `BRASEIRO_CYBERPUNK_RED_4.1.82_ASSINADO.apk`
+* **Tamanho:** 266.360.306 bytes (~254 MB)
+* **SHA-256 do APK:** `bd85060b4459fa96c7a58d9fe4971bf74a8ce273dab09a68d0407f22c550576a`
 
 O APK foi compilado e assinado com a mesma chave canônica das versões anteriores:
 
@@ -32,7 +32,7 @@ Essa correspondência exata garante atualização in-place (instalação sobrepo
 * **JVM Launcher:** Temurin / JetBrains JBR 21.0.10
 * **Target SDK:** 35 (Android 15)
 * **Min SDK:** 26 (Android 8.0 Oreo)
-* **Resultado do Build:** `BUILD SUCCESSFUL` (48 actionable tasks executadas com sucesso).
+* **Resultado do Build:** `BUILD SUCCESSFUL` (48 actionable tasks executadas com sucesso, 0 erros).
 
 ---
 
@@ -46,5 +46,5 @@ Essa correspondência exata garante atualização in-place (instalação sobrepo
 3. **Rollback de Falha e Idempotência:**
    - Movimentação no Atlas e salvamento de aventura utilizam o padrão de transação atômica verificado nos testes: se o armazenamento do host falha, o estado em memória é restaurado e as coordenadas anteriores no SQLite são preservadas.
 4. **Distinção de Testes:**
-   - Testes unitários (294/294), contratos JVM e compilação do APK foram 100% executados e aprovados.
+   - Testes unitários e de integração (314/314), contratos JVM e compilação do APK foram 100% executados e aprovados.
    - Teste no aparelho físico Samsung Galaxy A57 permanece demarcado como `NOT_TESTED (físico pendente de validação do usuário)`, conforme instrução estrita da ordem mestra.
