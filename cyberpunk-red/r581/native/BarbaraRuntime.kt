@@ -3574,11 +3574,16 @@ class BarbaraRuntime(private val context: Context) {
             }
 
             "WORLD_TIME_ADVANCE" -> {
-                val idempotencyKey = action.optString("idempotencyKey", actionId)
-                val existingTx = walletPrefs.getString("clock_tx:$idempotencyKey", null)
-                if (existingTx != null) {
-                    return JSONObject(existingTx).put("replayed", true)
-                }
+                val idempotencyKey = action.optString("idempotencyKey", action.optString("id")).trim()
+                if (idempotencyKey.isEmpty()) return JSONObject().put("ok", false)
+                    .put("resolved", false).put("blocked", true)
+                    .put("reason", "WORLD_TIME_IDEMPOTENCY_KEY_REQUIRED")
+                val receipts = campaignStateOf(c).optJSONObject("worldTimeReceiptsV3")
+                    ?: JSONObject().also { campaignStateOf(c).put("worldTimeReceiptsV3", it) }
+                val existingTx = receipts.optJSONObject(idempotencyKey)
+                if (existingTx != null) return JSONObject(existingTx.toString()).put("replayed", true)
+                val previousVersion = walletPrefs.getString("clock_tx:$idempotencyKey", null)
+                if (previousVersion != null) return JSONObject(previousVersion).put("replayed", true)
                 val minutes = action.optInt("minutes", action.optInt("advanceMinutes", action.optInt("days", 0) * 1440).coerceAtLeast(1))
                 val clock = normalizedWorldClock(c)
                 val prevElapsed = clock.optLong("elapsedMinutes", 0L)
@@ -3594,17 +3599,17 @@ class BarbaraRuntime(private val context: Context) {
                 }
                 expireStreetDrugsForClock(c, newElapsed)
 
-                runBlocking(Dispatchers.IO) {
-                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
-                }
-
                 val res = JSONObject()
                     .put("ok", true).put("resolved", true).put("blocked", false)
                     .put("authority", "barbara-world-clock").put("actionId", actionId).put("type", type)
                     .put("elapsedMinutes", newElapsed).put("daysAdvanced", daysAdvanced).put("day", day)
                     .put("passed", true).put("outcome", "TIME_ADVANCED").put("persisted", true)
 
-                walletPrefs.edit().putString("clock_tx:$idempotencyKey", res.toString()).commit()
+                receipts.put(idempotencyKey, res)
+                // Clock and its replay receipt share the same Room transaction.
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
                 return res
             }
 
