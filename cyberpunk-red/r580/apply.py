@@ -101,6 +101,7 @@ def apply(root):
 
 def patch_android_tts(java):
     p=java/'AndroidTtsService.kt';s=p.read_text().replace('            "com.braseiro.kokoro.ptbr",\n','').replace('            "com.braseiro.kokoro.tts",\n','')
+    s=s.replace('            "com.k2fsa.sherpa.onnx.tts.engine",\n','')
     s=s.replace(' || p.contains("kokoro", ignoreCase = true) || p.contains("sherpa.onnx", ignoreCase = true)','')
     s=one(s,'val target = rawTarget ?: detectKokoroPackage()','val target = rawTarget\n        if (target != null) require(installedEngines().let { list -> (0 until list.length()).any { list.getJSONObject(it).optString("packageName") == target } }) { "Motor TTS selecionado não está instalado: $target" }')
     a=s.index('        if (rawTarget == null) {');b=s.index('        return ready',a);s=s[:a]+s[b:]

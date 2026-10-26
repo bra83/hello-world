@@ -128,6 +128,8 @@ jobs:
             python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
             adb install -r build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -e class com.braseiro.cyberpunkred.MediaDiceSpeechTest com.braseiro.cyberpunkred.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.log
+            adb logcat -d > evidence/android/instrumentation-logcat.txt
+            adb exec-out screencap -p > evidence/android/instrumentation-final.png
             python -c "from pathlib import Path; s=Path('instrumentation.log').read_text(); assert 'OK (1 test)' in s and 'FAILURES' not in s, s"
             adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-scene-imported.png > evidence/android/r580-scene-imported.png
             adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-dice-moving.png > evidence/android/r580-dice-moving.png

@@ -24,7 +24,9 @@ class MediaDiceSpeechTest {
  private fun eval(s:ActivityScenario<MainActivity>,code:String):String{
   val latch=CountDownLatch(1);var answer=""
   s.onActivity{a->a.findViewById<WebView>(R.id.webView).evaluateJavascript(code){v->answer=v;latch.countDown()}}
-  assertTrue("JavaScript callback timeout",latch.await(10,TimeUnit.SECONDS));return answer
+  // A callback scheduled across the initial WebView navigation may be discarded.
+  // Retry DOM polling; the enclosing deadline still fails if the UI never becomes ready.
+  return if(latch.await(10,TimeUnit.SECONDS))answer else "null"
  }
  private fun waitFor(s:ActivityScenario<MainActivity>,code:String,seconds:Int=50){val end=System.nanoTime()+seconds*1000000000L;while(System.nanoTime()<end){if(eval(s,code)=="true")return;Thread.sleep(250)};throw AssertionError("DOM condition failed: $code; "+eval(s,"document.querySelector('#toast')?.textContent"))}
  private fun shot(name:String){val bmp=ins.uiAutomation.takeScreenshot();File(ctx.filesDir,name).outputStream().use{bmp.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bmp.recycle()}
