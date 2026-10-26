@@ -115,7 +115,7 @@ jobs:
           profile: pixel_4
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: python cyberpunk-red/r577/tests/android_settings.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
+          script: python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
       - name: Publish diagnostic evidence on failure
         if: failure()
         env:
@@ -123,7 +123,7 @@ jobs:
         run: |
           mkdir -p evidence
           zip -qr failure-evidence.zip evidence
-          TAG=cyberpunk-red-r578-diagnostics-20261025
+          TAG=cyberpunk-red-r579-diagnostics-20261025
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk 4.1.79 diagnostic evidence' --notes 'Automated screenshots and logs for debugging, no APK.'
           gh release upload "$TAG" failure-evidence.zip --clobber
       - name: Package source and APK
