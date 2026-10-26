@@ -1,5 +1,12 @@
 def advisory_style(state,plan):
-    return bool(adventure_scope(state) and isinstance(plan,dict) and plan.get('mode')=='fiction')
+    if not isinstance(plan,dict) or plan.get('mode')!='fiction':return False
+    # Host provenance is the active saved character, not the newer receipt seed.
+    # This also covers imported saves without migrating or fabricating metadata.
+    player=getattr(state,'player_state',{})
+    if not isinstance(player,dict):return False
+    active=player.get('activeCharacterId');characters=player.get('characters')
+    if not isinstance(active,str) or not isinstance(characters,dict):return False
+    return len([c for c in characters.values() if isinstance(c,dict) and c.get('characterId')==active and not c.get('deleted')])==1
 
 
 def assess_style(narration,plan):

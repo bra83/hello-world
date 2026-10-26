@@ -86,6 +86,14 @@ for bad,reason in [({'narration':short,'state_patch':[{'path':'player_hp','value
     else:raise AssertionError('Unsafe scene accepted: '+reason)
     assert len(calls)==before,'Fatal authority/agency/meta violation retried as style'
 print('PASS: full 5254-character scene retained; factual/format safety repair bounded; continuing failure pending; state patches, player agency and technical prompt leakage still blocked')
+# Imported saves can predate the adventureSeed receipt. Presentation policy must
+# still apply to their real host character, without fabricating a seed or a receipt.
+legacy=new_state('legacy');legacy.player_state['characters']['canonical-key']['campaignState']['session'].pop('adventureSeed')
+responses[:]=[short,short];before=len(calls)
+restored=bridge.turn(legacy.to_json(),{**request,'request_id':'legacy'})
+assert restored['result']['narration_source']=='provider' and restored['result']['narration']==short,restored['result'].get('narrative_error')
+assert len(calls)==before+1 and CampaignState.from_json(restored['state']).player_state==legacy.player_state
+print('PASS: legacy imported character without adventureSeed uses the same direct flow, preserving data and without inventing seed metadata')
 # Do not introduce a reference-guard false positive for an action the player DID declare.
 from barbara.opening_contract import validate_complete
 accepted=validate_complete(engine,{'narration':'Você aceita a proposta. '+short,'claims':[]},s,calls[0]['context'],'Aceito a proposta.','normal',{'mode':'fiction','story_obligation':'continuation'},None)
