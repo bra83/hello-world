@@ -22,7 +22,7 @@ def validate_complete(engine,out,state,context,text,importance,plan,resolution):
     if quality.get('errors'):raise ValueError(quality['errors'][0])
     # Port the reference guard's separation: style is observed, agency/meta are fatal.
     normalized=''.join(c for c in unicodedata.normalize('NFD',narration.lower()) if unicodedata.category(c)!='Mn')
-    if re.search(r'\b(?:voce decide|voce resolveu|voce escolhe|voce aceita|voce recusa|voce concorda|sem pensar voce|voce sente medo|voce fica triste|voce fica impressionado|voce odeia)\b',normalized):
+    if plan.get('story_obligation')=='campaign_opening' and re.search(r'\b(?:voce decide|voce resolveu|voce escolhe|voce aceita|voce recusa|voce concorda|sem pensar voce|voce sente medo|voce fica triste|voce fica impressionado|voce odeia)\b',normalized):
         raise ValueError('player_agency_violation')
     if any(marker in narration.upper() for marker in ('FIM DO CONTEXTO','END OF CONTEXT','NARRATIVE_POLICY','WORLD_STATE_FOR_DRAMATIZATION','PROMPT DO SISTEMA','SYSTEM PROMPT','PRESENTATION.COVERAGE','CONTEXTO DO MESTRE','INSTRUÇÃO DE NARRAÇÃO','INSTRUCAO DE NARRACAO')):
         raise ValueError('narrative_meta_language')
