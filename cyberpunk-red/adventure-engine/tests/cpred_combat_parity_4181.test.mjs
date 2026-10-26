@@ -7,7 +7,7 @@ import {
   woundPenalty,
   resolveMeleeAttack,
   resolveDeathSave
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_combat.js';
+} from '../adapter/cpred_combat.js';
 
 test('Combat: Damage vs Armor SP - penetration, ablation and HP deduction', () => {
   // Case 1: Damage less than or equal to SP (No penetration, no HP loss, no SP ablation)

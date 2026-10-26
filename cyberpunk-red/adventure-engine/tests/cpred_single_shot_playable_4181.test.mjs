@@ -5,7 +5,7 @@ import {
   promoteAllSingleShotPlayableCharacters,
   SINGLE_SHOT_PDF_VERIFIED_SPECS,
   SINGLE_SHOT_NET_ARCHITECTURES
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/app/single_shot_pregen_factory.js';
+} from '../runtime/single_shot_pregen_factory.js';
 
 test('Single Shot Pack: Promote all 10 pregenerated characters to playable sheets', () => {
   const characters = promoteAllSingleShotPlayableCharacters();

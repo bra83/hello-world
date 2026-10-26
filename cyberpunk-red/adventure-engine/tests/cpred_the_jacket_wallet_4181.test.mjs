@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createTheJacketWalletRulesAdapter,
   THE_JACKET_WALLET_PORT_VERSION
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/app/cemk_the_jacket_wallet_port.js';
+} from '../runtime/cemk_the_jacket_wallet_port.js';
 
 test('The Jacket Wallet: Durable idempotent credit and receipt verification', async () => {
   assert.equal(THE_JACKET_WALLET_PORT_VERSION, 1);

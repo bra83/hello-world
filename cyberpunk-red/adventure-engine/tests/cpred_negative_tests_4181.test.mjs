@@ -5,10 +5,10 @@ import {
   applyPurchase,
   planSale,
   applySale
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_economy.js';
+} from '../adapter/cpred_economy.js';
 import {
   CyberpunkRulesAdapter
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/app/cyberpunk_host_adapters.js';
+} from '../runtime/cyberpunk_host_adapters.js';
 
 test('Negative: Unknown rule action types fail-closed with UNKNOWN_RULE_ACTION', async () => {
   const adapter = new CyberpunkRulesAdapter();

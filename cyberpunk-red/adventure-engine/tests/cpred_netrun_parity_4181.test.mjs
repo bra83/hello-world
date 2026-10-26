@@ -6,8 +6,8 @@ import {
   pathfinder,
   safeJackOut,
   unsafeJackOut
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_netrun.js';
-import { SINGLE_SHOT_NET_ARCHITECTURES } from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/app/single_shot_pregen_factory.js';
+} from '../adapter/cpred_netrun.js';
+import { SINGLE_SHOT_NET_ARCHITECTURES } from '../runtime/single_shot_pregen_factory.js';
 
 test('Netrunning: Actions per Turn based on Interface Rank (Core p. 197)', () => {
   assert.equal(netActionsForInterface(1), 2);

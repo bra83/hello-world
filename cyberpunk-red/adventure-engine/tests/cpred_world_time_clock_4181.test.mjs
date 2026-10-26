@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {
   advanceWorldClock,
   advanceWorldClockSeconds
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_world_clock.js';
+} from '../adapter/cpred_world_clock.js';
 import {
   resolveNaturalHealingDay,
   fullRestDaysCrossed
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_healing.js';
+} from '../adapter/cpred_healing.js';
 
 test('World Clock: Advance time deterministically and compute day/minutes', () => {
   const clock = { elapsedMinutes: 0, day: 1 };

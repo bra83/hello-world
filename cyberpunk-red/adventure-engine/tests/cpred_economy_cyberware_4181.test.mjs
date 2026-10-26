@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {
   priceCategoryFor,
   marketAccess
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_economy.js';
+} from '../adapter/cpred_economy.js';
 import {
   validateCyberwareInstallRequest,
   resolveCyberwareInstallation
-} from '../../../../cpred_4.1.80_source/android/app/src/main/assets/web/adapter/cpred_cyberware_surgery.js';
+} from '../adapter/cpred_cyberware_surgery.js';
 
 test('Economy: 8 Price Categories and Fixer Market Reach (Core p. 376)', () => {
   // Category ranks 1..8
