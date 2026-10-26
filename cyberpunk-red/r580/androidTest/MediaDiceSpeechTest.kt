@@ -53,8 +53,35 @@ class MediaDiceSpeechTest {
   Thread.sleep(1000);shot("r580-dice-moving.png")
   waitFor(scenario,"window.__physicalResult?.authority==='physical_top_face_verified_native'",35)
   assertEquals("true",eval(scenario,"window.__physicalResult.physics==='braseiro-physical-dice-2' && window.__physicalResult.values.reduce((a,b)=>a+b,0)+3===window.__physicalResult.total"))
-  shot("r580-dice-result.png");scenario.close()
+  shot("r580-dice-result.png")
   println("PASS: Android shared image decoded/displayed above text/persisted after reopen; actions visible; Gemini prompt native intent; physical FL dice native top-face result")
+  // Real Android binder/service fixture proves selection reaches the backend, not neural quality.
+  val probe=AndroidTtsService(ctx);assertFalse(probe.status().getBoolean("ready"));probe.installedEngines();assertFalse(probe.status().getBoolean("ready"));probe.close()
+  val mediaUri=Uri.parse("content://com.braseiro.cyberpunkred.test.media/scene.png")
+  fun stats(method:String="stats")=ctx.contentResolver.call(mediaUri,method,null,null)!!
+  stats("reset")
+  eval(scenario,"window.__voiceSaved=null;MotorBarbaraCore.voice.saveSettings({ttsEngine:'android',androidEnginePackage:'com.braseiro.cyberpunkred.test',androidVoice:''}).then(x=>window.__voiceSaved=x)")
+  waitFor(scenario,"window.__voiceSaved?.ok===true",100)
+  assertEquals("com.braseiro.cyberpunkred.test",SecureSecretStore(ctx).androidTtsEnginePackage())
+  eval(scenario,"window.__voiceSaved=null;MotorBarbaraCore.voice.saveSettings({ttsEngine:'android',androidEnginePackage:'com.braseiro.cyberpunkred.test',androidVoice:'fixture-pt-br'}).then(x=>window.__voiceSaved=x)")
+  waitFor(scenario,"window.__voiceSaved?.ok===true")
+  val longText="Mara observa a bancada em Watson, enquanto Razor aguarda uma resposta. ".repeat(85).trim()
+  fun speak(text:String){eval(scenario,"window.__localSpeak=null;MotorBarbaraCore.voice.speak({text:"+JSONObject.quote(text)+",engine:'android'}).then(x=>window.__localSpeak=x)");waitFor(scenario,"window.__localSpeak!==null");assertEquals("true",eval(scenario,"window.__localSpeak.ok===true"))}
+  fun pollLocal(){eval(scenario,"MotorBarbaraCore.voice.settings().then(x=>window.__localStatus=x.tts.android)")}
+  speak("<speaker name='Mara'>[voz: firme]"+longText+"</speaker>")
+  val complete=System.nanoTime()+35_000_000_000L
+  while(System.nanoTime()<complete){pollLocal();if(eval(scenario,"window.__localStatus?.state==='idle'")=="true")break;Thread.sleep(200)}
+  assertEquals("true",eval(scenario,"window.__localStatus?.completedChunksCount===window.__localStatus?.totalChunksQueued && window.__localStatus?.completedChunksCount>5"))
+  assertEquals(longText,stats().getString("text")!!.trim().replace("\n"," "))
+  assertEquals("fixture-pt-br",stats().getString("voice"))
+  stats("reset");speak(longText)
+  eval(scenario,"MotorBarbaraCore.voice.stop().then(x=>window.__stopped=x)");waitFor(scenario,"window.__stopped?.ok===true")
+  Thread.sleep(250);val callsAfterStop=stats().getInt("calls");Thread.sleep(500);assertEquals(callsAfterStop,stats().getInt("calls"))
+  stats("reset");speak("FORCE_FAIL "+longText)
+  val failed=System.nanoTime()+10_000_000_000L
+  while(System.nanoTime()<failed){pollLocal();if(eval(scenario,"window.__localStatus?.state==='error'")=="true")break;Thread.sleep(100)}
+  assertEquals("true",eval(scenario,"window.__localStatus?.state==='error' && window.__localStatus?.completedChunksCount===0"));assertEquals(1,stats().getInt("calls"))
+  println("PASS: lazy catalogue, real Android TextToSpeech package binding and persisted voice, 5k+ narration via callbacks, tags removed, stop invalidates queue, synthesis error never advances blocks; test service is not Kokoro")
   // Use the real native synthesis orchestration + AudioTrack with an HTTP fixture.
   // This does not contact Gemini or use a real API key.
   val requests=CopyOnWriteArrayList<JSONObject>()
@@ -75,6 +102,6 @@ class MediaDiceSpeechTest {
    assertEquals("idle",service.status().getString("state"));assertTrue(requests.size>1)
    for(r in requests){assertFalse(r.has("systemInstruction"));assertTrue(r.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).has("speech_metadata"))}
    println("PASS: native Gemini TTS HTTP fixture -> multiple chunks -> real AudioTrack playback -> idle; voice/style metadata preserved, no real key/network")
-  }finally{service.close();if(oldKey==null)secrets.clearApiKey()else secrets.setApiKey(oldKey)}
+  }finally{service.close();scenario.close();if(oldKey==null)secrets.clearApiKey()else secrets.setApiKey(oldKey)}
  }
 }

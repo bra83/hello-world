@@ -1,4 +1,6 @@
 import com.braseiro.cyberpunkred.GeminiSpeechWire;
+import com.braseiro.cyberpunkred.NativeNarrationPlan;
+import com.braseiro.cyberpunkred.BraseiroAndroidTtsPolicy;
 import com.braseiro.cyberpunkred.dice.*;
 import org.json.JSONObject;
 import java.nio.*;
@@ -6,6 +8,21 @@ import java.util.*;
 public class ContractTest {
  static void check(boolean yes,String message){if(!yes)throw new AssertionError(message);}
  public static void main(String[] args)throws Exception{
+  List<String> installed=Arrays.asList(BraseiroAndroidTtsPolicy.DEBUG,"com.google.android.tts");
+  check(BraseiroAndroidTtsPolicy.migrate(BraseiroAndroidTtsPolicy.LEGACY,installed).equals(BraseiroAndroidTtsPolicy.DEBUG),"Legacy alias not migrated to actual debug provider");
+  check(BraseiroAndroidTtsPolicy.migrate("com.google.android.tts",installed).equals("com.google.android.tts"),"Manual Google selection overridden");
+  check(BraseiroAndroidTtsPolicy.migrate(BraseiroAndroidTtsPolicy.DEBUG,Arrays.asList(BraseiroAndroidTtsPolicy.DEBUG,BraseiroAndroidTtsPolicy.RELEASE)).equals(BraseiroAndroidTtsPolicy.DEBUG),"Explicit debug preference overwritten");
+  check(!BraseiroAndroidTtsPolicy.selectable(Arrays.asList(BraseiroAndroidTtsPolicy.LEGACY,BraseiroAndroidTtsPolicy.DEBUG)).contains(BraseiroAndroidTtsPolicy.LEGACY),"Legacy alias selectable");
+  String spoken=NativeNarrationPlan.spoken("<speaker name='Mara'>[voz: firme]Mara diz: Olá, Razor.</speaker> [sfx: chuva] <breath>");
+  check(spoken.equals("Mara diz: Olá, Razor."),"Spoken metadata leaked or legitimate name removed: "+spoken);
+  String scene=("Mara observa a bancada em Watson, enquanto Razor aguarda uma resposta. ").repeat(85).trim();
+  List<NativeNarrationPlan.Chunk> chunks=NativeNarrationPlan.plan(scene);
+  check(chunks.size()>5 && chunks.get(0).text.length()<=560,"Incorrect first FL chunk");
+  List<String> pieces=new ArrayList<>();for(NativeNarrationPlan.Chunk c:chunks){check(scene.substring(c.offset,c.offset+c.text.length()).equals(c.text),"Wrong spoken offset");check(c.text.length()<=760,"Incorrect next FL chunk");pieces.add(c.text);}
+  check(String.join(" ",pieces).equals(scene),"Words lost/reordered across 5k-6k narration");
+  check(NativeNarrationPlan.plan("x".repeat(900)).get(0).text.length()==900,"Long word split");
+  try{NativeNarrationPlan.plan("x".repeat(3901));throw new AssertionError("Unsafe isolated word accepted");}catch(IllegalArgumentException expected){}
+  System.out.println("PASS: supplied Kokoro alias/selection policy, exact debug retained, FL 560/760 chunks/offsets/no lost words, metadata removed only from spoken copy");
   JSONObject req=GeminiSpeechWire.request("gemini-3.8-flash-tts","Charon","pt-BR","calmo","Narrador firme","Texto que deve ser lido.");
   check(!req.has("systemInstruction"),"Unsupported systemInstruction still sent");
   JSONObject part=req.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0);

@@ -16,6 +16,11 @@ public class FixtureImageProvider extends ContentProvider {
   try(FileOutputStream out=new FileOutputStream(f)){image.compress(Bitmap.CompressFormat.PNG,100,out);}catch(IOException e){throw new FileNotFoundException(e.getMessage());}finally{image.recycle();}
   return ParcelFileDescriptor.open(f,ParcelFileDescriptor.MODE_READ_ONLY);
  }
+ public android.os.Bundle call(String method,String arg,android.os.Bundle extras){
+  android.content.SharedPreferences p=getContext().getSharedPreferences("fixture-tts",0);
+  if("reset".equals(method))p.edit().clear().commit();
+  android.os.Bundle out=new android.os.Bundle();out.putString("text",p.getString("text",""));out.putString("voice",p.getString("voice",""));out.putInt("calls",p.getInt("calls",0));return out;
+ }
  public Cursor query(Uri u,String[] p,String s,String[] a,String o){return null;}
  public Uri insert(Uri u,ContentValues v){return null;}
  public int update(Uri u,ContentValues v,String s,String[] a){return 0;}

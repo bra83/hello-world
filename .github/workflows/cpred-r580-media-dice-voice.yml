@@ -46,7 +46,7 @@ jobs:
         run: |
           curl --fail --location --silent --show-error -o /tmp/json.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
           mkdir -p /tmp/cpred-contracts
-          javac -cp /tmp/json.jar -d /tmp/cpred-contracts cyberpunk-red/r580/native/PhysicalDiceEngine.java cyberpunk-red/r580/native/DiceRollSpec.java cyberpunk-red/r580/native/GeminiSpeechWire.java cyberpunk-red/r580/tests/ContractTest.java
+          javac -cp /tmp/json.jar -d /tmp/cpred-contracts cyberpunk-red/r580/native/PhysicalDiceEngine.java cyberpunk-red/r580/native/DiceRollSpec.java cyberpunk-red/r580/native/GeminiSpeechWire.java cyberpunk-red/r580/native/NativeNarrationPlan.java cyberpunk-red/r580/native/BraseiroAndroidTtsPolicy.java cyberpunk-red/r580/tests/ContractTest.java
           java -cp /tmp/json.jar:/tmp/cpred-contracts ContractTest | tee contracts.log
       - name: Rules regression
         run: node --test cyberpunk-red/adventure-engine/tests/*.test.mjs

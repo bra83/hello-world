@@ -17,6 +17,9 @@ def apply(root):
     p.write_text(s)
     p=root/'app/src/main/AndroidManifest.xml';s=p.read_text();s=one(s,'    <queries>','    <queries>\n        <package android:name="com.google.android.apps.bard" />\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="text/plain" /></intent>')
     s=one(s,'android:windowSoftInputMode="adjustResize"','android:windowSoftInputMode="adjustResize"\n            android:launchMode="singleTop"');p.write_text(s)
+    p=java/'BarbaraJsBridge.kt';s=p.read_text()
+    s=one(s,'    @Volatile private var closed = false','    private val audioControl = Executors.newSingleThreadExecutor()\n    @Volatile private var closed = false')
+    s=s.replace('else worker\n','else if (method == "stopGeminiTts") audioControl else worker\n').replace('        worker.shutdownNow()','        audioControl.shutdownNow()\n        worker.shutdownNow()');p.write_text(s)
     p=java/'GeminiTtsService.kt';s=p.read_text();a=s.index('            val systemMeta =');b=s.index('\n            conn.outputStream.use',a)
     s=s[:a]+'''            val body = GeminiSpeechWire.request(model, voice, language, styleNote, voiceProfile, text)
 '''+s[b:]
@@ -25,11 +28,12 @@ def apply(root):
             val mime = audio.optString("mimeType", audio.optString("mime_type", "audio/l16;rate=24000"))
             return GeminiSpeechWire.pcm(Base64.decode(audio.getString("data"), Base64.DEFAULT), mime)
 '''+s[b:]
+    s=s.replace('if (stripTags) AndroidTtsService.stripVocalTags(raw).ifBlank { raw } else raw','AndroidTtsService.stripVocalTags(raw)')
     s=one(s,'val key = "$model|$voice|$language|$style|$voiceProfile|$text"','val key = "speech-wire-v2|$model|$voice|$language|$style|$voiceProfile|$text"') if 'val key = "$model|' in s else s.replace('val digest = MessageDigest','val digest = MessageDigest')
     # New cache namespace cannot reuse old WAV-as-PCM entries.
     s=s.replace('"gemini-tts/','"gemini-tts-wire-v2/').replace('"gemini_tts"','"gemini_tts_wire_v2"')
     p.write_text(s)
-    patch_android_tts(java)
+    (java/'AndroidTtsService.kt').write_bytes((here/'native/AndroidTtsService.kt').read_bytes())
     p=java/'BarbaraRuntime.kt';s=p.read_text().replace('payload.optInt("maxChunkChars", 140)','payload.optInt("maxChunkChars", 650)')
     s=one(s,'            "kokoro" -> {\n                ttsService.stop()', '''            "kokoro" -> {
                 val exact = explicitEnginePkg ?: kokoroPkg ?: error("Braseiro Kokoro/Sherpa não está instalado. Escolha um motor local instalado nas configurações.")
@@ -42,6 +46,23 @@ def apply(root):
                 ttsService.stop()
                 androidTtsService.speakAsync(text, secretStore.androidTtsVoice(), secretStore.ttsLanguage(), style, speed, stripTags, explicitEnginePkg ?: secretStore.androidTtsEnginePackage().takeIf { it.isNotBlank() }, maxChunkChars)
             }'''+s[b:];p.write_text(s)
+    p=java/'BarbaraRuntime.kt';s=p.read_text()
+    s=one(s,'    fun geminiSettings(): JSONObject {','''    fun geminiSettings(): JSONObject {
+        val installed=androidTtsService.installedEngines()
+        val found=(0 until installed.length()).map { installed.getJSONObject(it).getString("packageName") }
+        val previous=secretStore.androidTtsEnginePackage()
+        val migrated=BraseiroAndroidTtsPolicy.migrate(previous,found)
+        if (migrated!=previous) secretStore.savePublicSettings(null,null,null,null,androidEnginePackage=migrated,androidVoice="")''')
+    s=s.replace('            rawPkg != null -> rawPkg','''            requestedEngine?.lowercase() == "kokoro" -> rawPkg?.takeIf { BraseiroAndroidTtsPolicy.isKokoro(it) } ?: kokoroPkg ?: error("Kokoro/Sherpa não instalado")
+            rawPkg != null -> rawPkg''')
+    s=s.replace('if (effectiveAndroidPkg != null) {','if (effectiveAndroidPkg != null && requestedEngine?.lowercase() != "gemini") {')
+    s=one(s,'            androidVoice = if (payload.has("androidVoice")) payload.optString("androidVoice") else null,','            androidVoice = selectedAndroidVoice,')
+    s=one(s,'        secretStore.savePublicSettings(\n            textModel = payload.optString("textModel")','''        val packageChanged = effectiveAndroidPkg != null && effectiveAndroidPkg != secretStore.androidTtsEnginePackage()
+        val selectedAndroidVoice = if (packageChanged) "" else if (payload.has("androidVoice")) payload.optString("androidVoice") else null
+        if (effectiveAndroidPkg != null && requestedEngine?.lowercase() != "gemini") androidTtsService.validateVoice(selectedAndroidVoice)
+        secretStore.savePublicSettings(
+            textModel = payload.optString("textModel")''')
+    p.write_text(s)
     p=app/'mobile_shell.js';s=p.read_text();s=one(s,"[$('.session-player-state'), $('#sessionRecommended'), $('#sessionFlowGuide')], master);","[$('.session-player-state'), $('#sessionFlowGuide')], master);\n    const actions=$('#sessionRecommended');if(actions)master.insertBefore(actions,$('.free-action-block'));" )
     s=one(s,"      fold('Imagem da cena · gerar ou importar', [media, $('#scenePrompt')], scene);", "      stack.insertBefore(scene,master);\n      // Image actions remain visible; only the optional editable prompt is folded.\n      fold('Editar prompt da imagem', [$('#scenePrompt')], scene);")
     p.write_text(s)
@@ -58,17 +79,23 @@ def apply(root):
     s=s.replace("this.toast('Imagem compartilhada importada e persistida.')","$('#sceneIllustration')?.scrollIntoView({block:'center',behavior:'smooth'});this.toast('Imagem compartilhada importada e persistida.')")
     # Above replacement in an expression arrow requires a block.
     s=s.replace(".then(()=>$('#sceneIllustration')?.scrollIntoView({block:'center',behavior:'smooth'});this.toast('Imagem compartilhada importada e persistida.'))", ".then(()=>{$('#sceneIllustration')?.scrollIntoView({block:'center',behavior:'smooth'});this.toast('Imagem compartilhada importada e persistida.');})")
+    for marker in ['  async newAdventureUniversal(){','  async sendSession(){']:
+        s=one(s,marker,marker+"\n    await globalThis.MotorBarbaraCore?.voice?.stop?.();")
     s=one(s,"{text,style:'narration',engine:engine||selector?.value||'android'}", "{text,style:$('#geminiVoiceStyle')?.value||'narration',voiceProfile:$('#geminiVoiceProfile')?.value||'',engine:engine||selector?.value||'android',androidEnginePackage:$('#androidTtsEnginePkg')?.value||undefined}")
     s=one(s,"this.toast(`Narração solicitada via ${out.engine||engine||'voz'}.`);return", "this.toast(`Narração solicitada via ${out.engine||engine||'voz'}.`);globalThis.BraseiroWatchSpeech?.(out.engine||engine||selector?.value);return")
     # Prompt now includes the real accepted scene, instead of generic Night City decoration.
     s=one(s,'\\nMomento: ${String(s?.lastAction', '\\nCena aceita pelo Mestre: ${String(s?.currentNarration||\'\').slice(0,8000)}.\\nMomento: ${String(s?.lastAction')
+    s=s.replace("try{await navigator.clipboard.writeText(prompt)}catch{};const native=", "const native=")
+    s=s.replace("    this.toast('Prompt copiado. Abra o Gemini e cole o texto.')", "    try{await navigator.clipboard.writeText(prompt)}catch{};this.toast('Prompt copiado. Abra o Gemini e cole o texto.')")
     p.write_text(s)
     p=app/'app.js';s=p.read_text()
     a=s.index(" const base=",s.index('function populateAndroidEngines('));b=s.index('\n}',a)
     s=s[:a]+''' const base='<option value="">Padrão local do aparelho</option>';
  const extras=values.filter(e=>e.packageName).map(e=>`<option value="${String(e.packageName).replace(/"/g,'&quot;')}">${String(e.label||e.packageName)} (${String(e.packageName)})</option>`).join('');
  select.innerHTML=base+extras;
- if(selected){if(![...select.options].some(o=>o.value===selected)){const missing=new Option(selected+' (não instalado)',selected);select.add(missing)}select.value=selected;}'''+s[b:]
+ if(selected){if(![...select.options].some(o=>o.value===selected)){const missing=new Option(selected+' (não instalado)',selected);missing.disabled=true;select.add(missing)}select.value=selected;}'''+s[b:]
+    s += "\nfor(const id of ['characterSelect','newCharacterBtn','characterImportFile']){document.getElementById(id)?.addEventListener(id==='newCharacterBtn'?'click':'change',()=>{globalThis.MotorBarbaraCore?.voice?.stop?.();},{capture:true});}\n"
+    s += "\ndocument.querySelector('#androidTtsEnginePkg')?.addEventListener('change',()=>{const v=document.querySelector('#androidTtsVoice');if(v)v.innerHTML='<option value=\"\">Salvar motor para carregar suas vozes PT-BR</option>';});\n"
     p.write_text(s)
     p=app/'index.html';s=p.read_text().replace('>ABRIR GEMINI</button>','>GERAR NO GEMINI</button>').replace('>IMPORTAR</button>','>IMPORTAR IMAGEM</button>')
     s=s.replace('<option value="com.k2fsa.sherpa.onnx.tts.engine">Braseiro Kokoro PT-BR • neural (com.k2fsa.sherpa.onnx.tts.engine)</option>','').replace('Detectar automaticamente (Kokoro / Sistema)','Padrão do aparelho (escolha um motor instalado)').replace('Automático (Kokoro/Android → Gemini)','Padrão local do aparelho').replace('Android / voz do aparelho','Android / motor local selecionado')
@@ -103,38 +130,8 @@ def apply(root):
     p=root/'app/build.gradle.kts';s=p.read_text().replace('versionCode = 4180','versionCode = 4180\n        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"').replace('dependencies {','dependencies {\n    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")');p.write_text(s)
     target=root/'app/src/androidTest';(target/'java/com/braseiro/cyberpunkred').mkdir(parents=True,exist_ok=True)
     for source in (here/'androidTest').iterdir():
-        (target/source.name if source.suffix=='.xml' else target/'java/com/braseiro/cyberpunkred'/source.name).write_bytes(source.read_bytes())
+        dest=target/'res/xml/tts_engine.xml' if source.name=='tts_engine.xml' else target/source.name if source.suffix=='.xml' else target/'java/com/braseiro/cyberpunkred'/source.name
+        dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(source.read_bytes())
     print('Applied 4.1.80 media, actions, native FL dice and corrected speech contracts')
-
-def patch_android_tts(java):
-    p=java/'AndroidTtsService.kt';s=p.read_text().replace('            "com.braseiro.kokoro.ptbr",\n','').replace('            "com.braseiro.kokoro.tts",\n','')
-    s=s.replace('            "com.k2fsa.sherpa.onnx.tts.engine",\n','')
-    s=s.replace(' || p.contains("kokoro", ignoreCase = true) || p.contains("sherpa.onnx", ignoreCase = true)','')
-    s=one(s,'val target = rawTarget ?: detectKokoroPackage()','val target = rawTarget\n        if (target != null) require(installedEngines().let { list -> (0 until list.length()).any { list.getJSONObject(it).optString("packageName") == target } }) { "Motor TTS selecionado não está instalado: $target" }')
-    a=s.index('        if (rawTarget == null) {');b=s.index('        return ready',a);s=s[:a]+s[b:]
-    s=one(s,'if (target != activeEnginePackage || !ready) {','if ((target != null && target != activeEnginePackage) || (target == null && activeEnginePackage != null && activeEnginePackage != tts.defaultEngine) || !ready) {')
-    # Never label an arbitrary saved Android engine as Kokoro.
-    s=s.replace('v.locale?.language == "pt"','v.locale?.language in listOf("pt", "por")').replace('it.locale?.language == "pt"','it.locale?.language in listOf("pt", "por")')
-    s=s.replace('?: voicesSet?.maxByOrNull(::voiceScore)','?: if (!isKokoro) voicesSet?.maxByOrNull(::voiceScore) else null')
-    s=one(s,'        when (style.lowercase()) {','        if (isKokoro) { tts.setSpeechRate(clampedSpeed);tts.setPitch(1.0f) } else when (style.lowercase()) {')
-    s=s.replace('maxChunkChars: Int = 140','maxChunkChars: Int = 650').replace('maxChars: Int = 140','maxChars: Int = 650')
-    s=s.replace('maxChunkChars.coerceIn(40, 3400)','maxChunkChars.coerceIn(350, 800)')
-    # Confirm actual engine just as the reference plugin does; only default selection
-    # may use getDefaultEngine when framework reflection is unavailable.
-    s=s.replace('        if (awaitReady()) return true', '''        if (awaitReady()) {
-            val actual = runCatching { TextToSpeech::class.java.getMethod("getCurrentEngine").invoke(tts) as? String }.getOrNull()
-                ?: runCatching { TextToSpeech::class.java.getDeclaredField("mCurrentEngine").apply { isAccessible=true }.get(tts) as? String }.getOrNull()
-                ?: if (target == null || target == tts.defaultEngine) tts.defaultEngine else null
-            if (target != null && actual != target) { ready=false;state="error";lastError="Android não confirmou o motor selecionado: $target";error(lastError!!) }
-            activeEnginePackage=actual
-            return true
-        }''')
-    s=s.replace(' || pkg.contains("kokoro", ignoreCase = true) || pkg.contains("sherpa.onnx", ignoreCase = true)','')
-    s=s.replace('pkg.contains("kokoro", ignoreCase = true) || pkg.contains("sherpa.onnx", ignoreCase = true)','pkg in KOKORO_PACKAGES')
-    s=s.replace(' || activeEnginePackage!!.contains("kokoro") || activeEnginePackage!!.contains("sherpa")','')
-    s=one(s,'override fun onStop(utteranceId: String?, interruptedFlag: Boolean) {','override fun onStop(utteranceId: String?, interruptedFlag: Boolean) {\n                if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return')
-    s=one(s,'override fun onError(utteranceId: String?) {','override fun onError(utteranceId: String?) {\n                if (utteranceId != null && !utteranceId.startsWith("cpred-${generation.get()}-")) return')
-    s=one(s,'override fun onError(utteranceId: String?, errorCode: Int) {','override fun onError(utteranceId: String?, errorCode: Int) {\n                if (utteranceId != null && !utteranceId.startsWith("cpred-${generation.get()}-")) return')
-    p.write_text(s)
 
 if __name__=='__main__':apply(sys.argv[1])
