@@ -3262,6 +3262,10 @@ class BarbaraRuntime(private val context: Context) {
         when (type) {
             "DICE_ROLL" -> {
                 val formula = action.optString("formula", "1d10")
+                if (!Regex("""^(\d{0,2}d(4|6|8|10|12|20)([+-]\d{1,4})?|\d{1,5})$""").matches(formula.trim().lowercase().replace(" ", ""))) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("reason", "INVALID_DICE_EXPRESSION")
+                }
                 val eval = evaluateDiceExpression(formula)
                 return JSONObject()
                     .put("ok", true)
@@ -3418,64 +3422,124 @@ class BarbaraRuntime(private val context: Context) {
             }
 
             "NETRUN", "NET_ARCHITECTURE", "INTERFACE_CHECKS" -> {
-                val role = c.optString("role", "").lowercase()
-                val interfaceRank = c.optInt("roleAbilityRank", 0)
-                if (role != "netrunner" || interfaceRank < 1) {
-                    return JSONObject()
-                        .put("ok", false).put("resolved", false).put("blocked", true)
+                val denyNet = { reason: String ->
+                    JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
                         .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
-                        .put("reason", "NOT_A_NETRUNNER")
-                        .put("diagnostic", "Personagem '$charId' possui Role '$role' e Interface $interfaceRank; Netrunning exige Role Netrunner com Interface >= 1")
+                        .put("reason", reason)
                 }
-                val netActionBudget = when {
-                    interfaceRank <= 2 -> 2
+                if (!c.optString("role").equals("Netrunner", true))
+                    return denyNet("NOT_A_NETRUNNER")
+                val interfaceRank = c.optInt("roleAbilityRank", 0)
+                if (interfaceRank !in 1..10) return denyNet("INVALID_INTERFACE_RANK")
+                val operation = action.optString("operation", action.optString("netAction")).uppercase().trim()
+                if (operation.isBlank()) return denyNet("NET_OPERATION_REQUIRED")
+                // Only explicitly supported operations may alter the NET Architecture.
+                val basicChecks = setOf("PATHFINDER", "BACKDOOR", "EYE_DEE", "CONTROL_NODE", "VIRUS")
+                val special = setOf("JACK_IN", "JACK_OUT", "SLIDE", "ZAP")
+                if (operation !in basicChecks && operation !in special)
+                    return denyNet("UNIMPLEMENTED_NET_OPERATION")
+                if (operation == "ZAP" || operation == "SLIDE")
+                    return denyNet("NET_COMBAT_CONTEST_RESOLVER_REQUIRED")
+                val key = action.optString("idempotencyKey", action.optString("id")).trim()
+                val turnId = action.optString("netTurnId").trim()
+                if (key.isEmpty() || turnId.isEmpty()) return denyNet("NET_TRANSACTION_AND_TURN_REQUIRED")
+                val archId = action.optString("architectureId", action.optString("archId")).trim()
+                if (!Regex("""^ssp_net_arch_0[1-6]$""").matches(archId))
+                    return denyNet("UNVERIFIED_NET_ARCHITECTURE")
+                val campaign = campaignStateOf(c)
+                val state = campaign.optJSONObject("netrunState")
+                    ?: JSONObject().also { campaign.put("netrunState", it) }
+                val ledger = state.optJSONObject("actionReceiptsV3")
+                    ?: JSONObject().also { state.put("actionReceiptsV3", it) }
+                val replay = ledger.optJSONObject(key)
+                if (replay != null) {
+                    if (replay.optString("operation") != operation || replay.optString("netTurnId") != turnId)
+                        return denyNet("NET_TRANSACTION_CONFLICT")
+                    return JSONObject(replay.toString()).put("replayed", true)
+                }
+                val budget = when {
+                    interfaceRank <= 3 -> 2
                     interfaceRank <= 6 -> 3
                     interfaceRank <= 9 -> 4
                     else -> 5
                 }
-                val archId = action.optString("architectureId", action.optString("archId", "ssp_net_arch_01"))
-                val netOperation = action.optString("operation", action.optString("netAction", "PATHFINDER")).uppercase()
-                if (!action.has("dv") && !action.has("difficulty")) {
-                    return JSONObject()
-                        .put("ok", false).put("resolved", false).put("blocked", true)
-                        .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
-                        .put("reason", "MISSING_DIFFICULTY_DV")
-                        .put("diagnostic", "Ação NET '$netOperation' exige parâmetro de dificuldade DV")
+                val existingTurn = state.optString("activeTurnId")
+                if (existingTurn != turnId) {
+                    state.put("activeTurnId", turnId)
+                    state.put("actionsRemaining", budget)
                 }
-                val dvVal = action.optInt("dv", action.optInt("difficulty", 6))
+                val remaining = state.optInt("actionsRemaining", 0)
+                if (remaining <= 0) return denyNet("NET_ACTION_BUDGET_EXHAUSTED")
+                if (operation != "JACK_IN" && !state.optBoolean("jackedIn", false))
+                    return denyNet("NETRUNNER_NOT_JACKED_IN")
+                if (operation == "JACK_IN" && state.optBoolean("jackedIn", false))
+                    return denyNet("ALREADY_JACKED_IN")
+                val floor = action.optInt("floor", 0)
+                if (operation in basicChecks && floor < 1) return denyNet("NET_FLOOR_REQUIRED")
+                if (operation in basicChecks && (!action.has("dv") && !action.has("difficulty")))
+                    return denyNet("NET_OFFICIAL_DV_REQUIRED")
+                val dv = action.optInt("dv", action.optInt("difficulty", 0))
                 val d10 = evaluateDiceExpression("1d10")
-                val total = interfaceRank + d10.total + woundPenalty
-                val passed = total > dvVal // Beat the DV (Core p. 129)
-
-                val campaign = campaignStateOf(c)
-                val netState = campaign.optJSONObject("netrunState") ?: JSONObject().also { campaign.put("netrunState", it) }
-                netState.put("activeArchitecture", archId)
-                netState.put("interfaceRank", interfaceRank)
-                netState.put("netActionsBudget", netActionBudget)
-                netState.put("lastOperation", netOperation)
-                netState.put("lastPassed", passed)
-                if (passed) {
-                    val cleared = netState.optJSONArray("clearedFloors") ?: JSONArray().also { netState.put("clearedFloors", it) }
-                    val currentFloor = action.optInt("floor", 1)
-                    if ((0 until cleared.length()).none { cleared.getInt(it) == currentFloor }) {
-                        cleared.put(currentFloor)
+                val total = interfaceRank + d10.total
+                val passed = operation in special || total > dv
+                val newRemaining = remaining - 1
+                state.put("activeArchitecture", archId)
+                state.put("interfaceRank", interfaceRank)
+                state.put("netActionsBudget", budget)
+                state.put("actionsRemaining", newRemaining)
+                state.put("lastOperation", operation)
+                state.put("lastPassed", passed)
+                when (operation) {
+                    "JACK_IN" -> state.put("jackedIn", true)
+                    "JACK_OUT" -> {
+                        val activeIce = state.optJSONArray("activeBlackIce") ?: JSONArray()
+                        if (activeIce.length() != 0) return denyNet("UNSAFE_JACK_OUT_ICE_ATTACKS_NOT_RESOLVED")
+                        state.put("jackedIn", false)
                     }
-                    netState.put("currentFloor", currentFloor)
+                    "PATHFINDER" -> if (passed) {
+                        val seen = state.optJSONArray("discoveredFloors")
+                            ?: JSONArray().also { state.put("discoveredFloors", it) }
+                        if ((0 until seen.length()).none { seen.optInt(it) == floor }) seen.put(floor)
+                    }
+                    "BACKDOOR" -> if (passed) {
+                        val unlocked = state.optJSONArray("unlockedPasswords")
+                            ?: JSONArray().also { state.put("unlockedPasswords", it) }
+                        if ((0 until unlocked.length()).none { unlocked.optInt(it) == floor }) unlocked.put(floor)
+                    }
+                    "EYE_DEE" -> if (passed) {
+                        val files = state.optJSONArray("identifiedFiles")
+                            ?: JSONArray().also { state.put("identifiedFiles", it) }
+                        val target = action.optString("targetId")
+                        if (target.isBlank()) return denyNet("NET_FILE_ID_REQUIRED")
+                        if ((0 until files.length()).none { files.optString(it) == target }) files.put(target)
+                    }
+                    "CONTROL_NODE" -> if (passed) {
+                        val nodes = state.optJSONArray("controlledNodes")
+                            ?: JSONArray().also { state.put("controlledNodes", it) }
+                        val target = action.optString("targetId")
+                        if (target.isBlank()) return denyNet("NET_CONTROL_NODE_REQUIRED")
+                        if ((0 until nodes.length()).none { nodes.optString(it) == target }) nodes.put(target)
+                    }
+                    "VIRUS" -> if (passed) {
+                        val viruses = state.optJSONArray("installedViruses")
+                            ?: JSONArray().also { state.put("installedViruses", it) }
+                        val target = action.optString("targetId")
+                        if (target.isBlank()) return denyNet("NET_VIRUS_TARGET_REQUIRED")
+                        if ((0 until viruses.length()).none { viruses.optString(it) == target }) viruses.put(target)
+                    }
                 }
-
+                val receipt = JSONObject().put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("architectureId", archId).put("operation", operation).put("netTurnId", turnId)
+                    .put("interfaceRank", interfaceRank).put("netActionsBudget", budget)
+                    .put("actionsRemaining", newRemaining).put("roll", d10.total).put("total", total)
+                    .put("dv", dv).put("passed", passed).put("persisted", true)
+                    .put("outcome", if (passed) "SUCCESS" else "FAILURE")
+                ledger.put(key, receipt)
                 runBlocking(Dispatchers.IO) {
                     characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
                 }
-
-                return JSONObject()
-                    .put("ok", true).put("resolved", true).put("blocked", false)
-                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
-                    .put("architectureId", archId).put("netOperation", netOperation)
-                    .put("interfaceRank", interfaceRank).put("netActionsBudget", netActionBudget)
-                    .put("roll", d10.total).put("total", total).put("dv", dvVal).put("passed", passed)
-                    .put("woundPenalty", woundPenalty)
-                    .put("outcome", if (passed) "SUCCESS" else "FAILURE")
-                    .put("persisted", true)
+                return receipt
             }
 
             "HUMANITY_CHECK" -> {
