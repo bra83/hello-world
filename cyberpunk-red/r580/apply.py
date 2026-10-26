@@ -59,6 +59,12 @@ def apply(root):
         val previous=secretStore.androidTtsEnginePackage()
         val migrated=BraseiroAndroidTtsPolicy.migrate(previous,found)
         if (migrated!=previous) secretStore.savePublicSettings(null,null,null,null,androidEnginePackage=migrated,androidVoice="")''')
+    s=one(s,'        val kokoroPkg = androidTtsService.detectKokoroPackage()\n        val rawPkg','''        if (requestedEngine!=null && requestedEngine!=secretStore.ttsEngine()) {
+            val local=androidTtsService.status();val remote=ttsService.status()
+            check(!local.optBoolean("speaking") && remote.optString("state") !in listOf("queued","generating","playing")) { "Pare a narração antes de trocar o provedor de voz" }
+        }
+        val kokoroPkg = androidTtsService.detectKokoroPackage()
+        val rawPkg''')
     s=s.replace('            rawPkg != null -> rawPkg','''            requestedEngine?.lowercase() == "kokoro" -> rawPkg?.takeIf { BraseiroAndroidTtsPolicy.isKokoro(it) } ?: kokoroPkg ?: error("Kokoro/Sherpa não instalado")
             rawPkg != null -> rawPkg''')
     s=s.replace('if (effectiveAndroidPkg != null) {','if (effectiveAndroidPkg != null && requestedEngine?.lowercase() != "gemini") {')
@@ -111,6 +117,7 @@ def apply(root):
     p.write_text(s)
     p=app/'index.html';s=p.read_text().replace('>ABRIR GEMINI</button>','>GERAR NO GEMINI</button>').replace('>IMPORTAR</button>','>IMPORTAR IMAGEM</button>')
     s=s.replace('<option value="com.k2fsa.sherpa.onnx.tts.engine">Braseiro Kokoro PT-BR • neural (com.k2fsa.sherpa.onnx.tts.engine)</option>','').replace('Detectar automaticamente (Kokoro / Sistema)','Padrão do aparelho (escolha um motor instalado)').replace('Automático (Kokoro/Android → Gemini)','Padrão local do aparelho').replace('Android / voz do aparelho','Android / motor local selecionado')
+    s=s.replace('VELOCIDADE TTS (0.5x – 2.0x)','VELOCIDADE TTS (0.65x – 1.50x)').replace('id="ttsSpeedInput" max="2.0" min="0.5"','id="ttsSpeedInput" max="1.50" min="0.65"')
     s=s.replace('build=4179','build=4180');s=one(s,'</body>', '<script type="module" src="./media_voice_580.js"></script>\n</body>');p.write_text(s)
     p=app/'mobile_shell.css';p.write_text(p.read_text()+'''\n/* Scene image and choices are primary play controls. */
 #cpredMobile .session-scene-card{order:0!important;scroll-margin-top:78px}
@@ -138,6 +145,7 @@ def apply(root):
     files[record]=out.getvalue().encode()
     with zipfile.ZipFile(wheel,'w',zipfile.ZIP_DEFLATED) as z:
         for name,data in files.items():z.writestr(name,data)
+    p=java/'SecureSecretStore.kt';s=p.read_text().replace('(ttsSpeed ?: ttsSpeed()).coerceIn(0.5f, 2.0f)','(ttsSpeed ?: ttsSpeed()).coerceIn(0.65f, 1.50f)').replace('prefs.getFloat(TTS_SPEED, 1.0f).coerceIn(0.5f, 2.0f)','prefs.getFloat(TTS_SPEED, 1.0f).coerceIn(0.65f, 1.50f)');p.write_text(s)
     p=root/'app/build.gradle.kts';s=p.read_text().replace('versionCode = 4179','versionCode = 4180').replace('versionName = "4.1.79"','versionName = "4.1.80"');p.write_text(s)
     p=root/'app/build.gradle.kts';s=p.read_text().replace('versionCode = 4180','versionCode = 4180\n        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"').replace('dependencies {','dependencies {\n    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")');p.write_text(s)
     target=root/'app/src/androidTest';(target/'java/com/braseiro/cyberpunkred').mkdir(parents=True,exist_ok=True)

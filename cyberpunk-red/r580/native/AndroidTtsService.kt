@@ -150,6 +150,7 @@ class AndroidTtsService(private val context: Context) {
                             Log.i(TAG, "onDone -> queueNextChunk: index=$nextIdx/$total, id=$nextId, text='$nextChunk'")
                             val code = tts.speak(nextChunk, TextToSpeech.QUEUE_ADD, Bundle(), nextId)
                             if (code == TextToSpeech.ERROR) {
+                                generation.incrementAndGet();pendingChunks=emptyList();interrupted=true
                                 state = "error"
                                 lastError = "Android TTS recusou o bloco $nextIdx/$total"
                                 chunkEvents.add("error:$nextId")
@@ -169,6 +170,8 @@ class AndroidTtsService(private val context: Context) {
             override fun onStop(utteranceId: String?, interruptedFlag: Boolean) {
                 synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return
+                generation.incrementAndGet()
+                pendingChunks=emptyList()
                 interrupted = true
                 interruptedAtChunk = maxOf(currentChunkIndex, startedChunksCount)
                 chunkEvents.add("stop:${utteranceId ?: "active"}")
@@ -181,6 +184,7 @@ class AndroidTtsService(private val context: Context) {
             override fun onError(utteranceId: String?) {
                 synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return
+                generation.incrementAndGet();pendingChunks=emptyList();interrupted=true
                 state = "error"
                 lastError = "Falha no mecanismo de voz Android"
                 chunkEvents.add("error:${utteranceId ?: "unknown"}");releaseFocus()
@@ -190,6 +194,7 @@ class AndroidTtsService(private val context: Context) {
             override fun onError(utteranceId: String?, errorCode: Int) {
                 synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return
+                generation.incrementAndGet();pendingChunks=emptyList();interrupted=true
                 state = "error"
                 lastError = "Falha no mecanismo de voz Android (código $errorCode)"
                 chunkEvents.add("error:${utteranceId ?: "unknown"}:$errorCode");releaseFocus()
