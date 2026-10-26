@@ -37,7 +37,6 @@ jobs:
           python cyberpunk-red/r581/apply.py build-source/android
           rm -f build-source/android/local.properties
           mkdir -p ~/.android
-          cp cyberpunk-red/r581/signing/debug.keystore ~/.android/debug.keystore
       - name: Full opening contract and engine publication boundary
         run: |
           python cyberpunk-red/r579/tests/flow.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl patched build-source/android/app/src/main/assets/barbara/cyberpunk-red-4.0.0.zip | tee opening.log
@@ -89,7 +88,7 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - name: Fingerprint compiled sources
         id: fingerprint
-        run: echo "sha=$(cat cyberpunk-red/r581/apply.py cyberpunk-red/r581/native/* cyberpunk-red/r581/signing/* cyberpunk-red/r581/androidTest/* | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(cat cyberpunk-red/r581/apply.py cyberpunk-red/r581/native/* cyberpunk-red/r581/androidTest/* | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         id: apkcache
         with:
