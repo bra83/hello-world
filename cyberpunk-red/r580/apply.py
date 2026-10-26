@@ -63,6 +63,13 @@ def apply(root):
     # Prompt now includes the real accepted scene, instead of generic Night City decoration.
     s=one(s,'\\nMomento: ${String(s?.lastAction', '\\nCena aceita pelo Mestre: ${String(s?.currentNarration||\'\').slice(0,8000)}.\\nMomento: ${String(s?.lastAction')
     p.write_text(s)
+    p=app/'app.js';s=p.read_text()
+    a=s.index(" const base=",s.index('function populateAndroidEngines('));b=s.index('\n}',a)
+    s=s[:a]+''' const base='<option value="">Padrão local do aparelho</option>';
+ const extras=values.filter(e=>e.packageName).map(e=>`<option value="${String(e.packageName).replace(/"/g,'&quot;')}">${String(e.label||e.packageName)} (${String(e.packageName)})</option>`).join('');
+ select.innerHTML=base+extras;
+ if(selected){if(![...select.options].some(o=>o.value===selected)){const missing=new Option(selected+' (não instalado)',selected);select.add(missing)}select.value=selected;}'''+s[b:]
+    p.write_text(s)
     p=app/'index.html';s=p.read_text().replace('>ABRIR GEMINI</button>','>GERAR NO GEMINI</button>').replace('>IMPORTAR</button>','>IMPORTAR IMAGEM</button>')
     s=s.replace('<option value="com.k2fsa.sherpa.onnx.tts.engine">Braseiro Kokoro PT-BR • neural (com.k2fsa.sherpa.onnx.tts.engine)</option>','').replace('Detectar automaticamente (Kokoro / Sistema)','Padrão do aparelho (escolha um motor instalado)').replace('Automático (Kokoro/Android → Gemini)','Padrão local do aparelho').replace('Android / voz do aparelho','Android / motor local selecionado')
     s=s.replace('build=4179','build=4180');s=one(s,'</body>', '<script type="module" src="./media_voice_580.js"></script>\n</body>');p.write_text(s)
