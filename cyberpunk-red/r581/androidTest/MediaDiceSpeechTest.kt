@@ -137,9 +137,9 @@ class MediaDiceSpeechTest {
     "cyberpunk-red-adapter.sqlite3"
    ).allowMainThreadQueries().build()
    val dao = db.characters()
+   val testId = "cpred_audit_solo_01"
 
    try {
-    val testId = "cpred_audit_solo_01"
     val initialJson = JSONObject().apply {
      put("characterId", testId)
      put("name", "Audit Solo Test")

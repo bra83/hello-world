@@ -147,6 +147,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p evidence
+          cp -f android-build.log evidence/ 2>/dev/null || true
           zip -qr failure-evidence.zip evidence
           TAG=cyberpunk-red-r581-diagnostics-20261026
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk 4.1.82 diagnostic evidence' --notes 'Automated screenshots and logs for debugging, no APK.'
