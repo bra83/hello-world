@@ -114,8 +114,10 @@ jobs:
           key: cpred-r581-apk-${{ steps.fingerprint.outputs.sha }}
       - name: Verify APK signature with canonical certificate
         run: |
-          $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs build-source/android/app/build/outputs/apk/debug/app-debug.apk | tee apksigner.log
-          grep -q "6aa87a24a2eb4762c3f493c9d5fddbf10b60cc8659a90423aed7cde8ae582bd3" apksigner.log || { echo "ERROR: Certificate mismatch"; exit 1; }
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner -type f | sort -V | tail -n 1)
+          echo "Found apksigner at: $APKSIGNER"
+          "$APKSIGNER" verify --print-certs build-source/android/app/build/outputs/apk/debug/app-debug.apk | tee apksigner.log
+          grep -qi "6aa87a24a2eb4762c3f493c9d5fddbf10b60cc8659a90423aed7cde8ae582bd3" apksigner.log || { echo "ERROR: Certificate mismatch"; exit 1; }
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

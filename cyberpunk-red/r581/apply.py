@@ -47,10 +47,29 @@ def apply(root):
         s = gradle_file.read_text(encoding='utf-8')
         s = s.replace('versionCode = 4180', 'versionCode = 4182').replace('versionCode = 4181', 'versionCode = 4182')
         s = s.replace('versionName = "4.1.80"', 'versionName = "4.1.82"').replace('versionName = "4.1.81"', 'versionName = "4.1.82"')
+        signing_block = """
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+"""
+        if 'signingConfigs {' not in s:
+            s = s.replace('buildFeatures {', signing_block + '\n    buildFeatures {')
         gradle_file.write_text(s, encoding='utf-8')
-        print('Patched build.gradle.kts to versionCode 4182, versionName 4.1.82')
+        print('Patched build.gradle.kts to versionCode 4182, versionName 4.1.82, and explicit canonical debug signingConfig')
 
-    # 5. Update androidTest MediaDiceSpeechTest.kt
+    # 5. Copy canonical keystore directly into app/
+    keystore_src = here / 'signing/debug.keystore'
+    keystore_dst = root / 'app/debug.keystore'
+    if keystore_src.exists():
+        keystore_dst.write_bytes(keystore_src.read_bytes())
+        print('Copied canonical debug.keystore into app/debug.keystore')
+
+    # 6. Update androidTest MediaDiceSpeechTest.kt
     test_src = here / 'androidTest/MediaDiceSpeechTest.kt'
     test_dst = root / 'app/src/androidTest/java/com/braseiro/cyberpunkred/MediaDiceSpeechTest.kt'
     if test_src.exists() and test_dst.parent.exists():
