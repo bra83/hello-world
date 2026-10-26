@@ -109,6 +109,7 @@ class AndroidTtsService(private val context: Context) {
         )
         instance.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
+                synchronized(sequenceLock) {
                 val activeGen = "cpred-${generation.get()}-"
                 if (utteranceId?.startsWith(activeGen) == true) {
                     state = "playing"
@@ -120,11 +121,14 @@ class AndroidTtsService(private val context: Context) {
                     Log.i(TAG, "onStart callback: utteranceId=$utteranceId, chunk=$currentChunkIndex/$totalChunksQueued")
                 }
             }
+            }
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") == true) {
                     val index=utteranceId.removePrefix("cpred-${generation.get()}-").substringBefore("-").toIntOrNull() ?: return
                     spokenOffset=(plannedChunks.getOrNull(index-1)?.offset ?: 0)+start
                 }
+            }
             }
             override fun onDone(utteranceId: String?) {
                 synchronized(sequenceLock) {
@@ -163,6 +167,7 @@ class AndroidTtsService(private val context: Context) {
             }
             }
             override fun onStop(utteranceId: String?, interruptedFlag: Boolean) {
+                synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return
                 interrupted = true
                 interruptedAtChunk = maxOf(currentChunkIndex, startedChunksCount)
@@ -171,20 +176,25 @@ class AndroidTtsService(private val context: Context) {
                 if (state != "error") state = "stopped"
                 releaseFocus()
             }
+            }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
+                synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return
                 state = "error"
                 lastError = "Falha no mecanismo de voz Android"
                 chunkEvents.add("error:${utteranceId ?: "unknown"}");releaseFocus()
                 Log.e(TAG, "onError callback: utteranceId=$utteranceId")
             }
+            }
             override fun onError(utteranceId: String?, errorCode: Int) {
+                synchronized(sequenceLock) {
                 if (utteranceId?.startsWith("cpred-${generation.get()}-") != true) return
                 state = "error"
                 lastError = "Falha no mecanismo de voz Android (código $errorCode)"
                 chunkEvents.add("error:${utteranceId ?: "unknown"}:$errorCode");releaseFocus()
                 Log.e(TAG, "onError callback: utteranceId=$utteranceId, code=$errorCode")
+            }
             }
         })
         return instance

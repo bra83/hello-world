@@ -16,10 +16,10 @@ public class FixtureTtsService extends TextToSpeechService {
   stopped=false;String text=request.getCharSequenceText().toString();
   android.content.SharedPreferences pref=getSharedPreferences("fixture-tts",0);
   synchronized(FixtureTtsService.class){pref.edit().putString("text",pref.getString("text","")+text+"\n").putInt("calls",pref.getInt("calls",0)+1).putString("voice",request.getVoiceName()).commit();}
-  if(text.contains("FORCE_FAIL")){callback.error(TextToSpeech.ERROR_SYNTHESIS);return;}
+  if(text.contains("FORCE_FAIL")){callback.error(TextToSpeech.ERROR_SYNTHESIS);callback.done();return;}
   callback.start(24000,AudioFormat.ENCODING_PCM_16BIT,1);
   byte[] silence=new byte[2400];
-  for(int i=0;i<4;i++){if(stopped){callback.error(TextToSpeech.STOPPED);return;}callback.audioAvailable(silence,0,silence.length);try{Thread.sleep(25);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}}
+  for(int i=0;i<4;i++){if(stopped){callback.error(TextToSpeech.STOPPED);callback.done();return;}callback.audioAvailable(silence,0,silence.length);try{Thread.sleep(25);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}}
   callback.done();
  }
 }

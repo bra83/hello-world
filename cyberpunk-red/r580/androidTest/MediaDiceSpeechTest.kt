@@ -32,6 +32,10 @@ class MediaDiceSpeechTest {
   return if(latch.await(10,TimeUnit.SECONDS))answer else "null"
  }
  private fun waitFor(s:ActivityScenario<MainActivity>,code:String,seconds:Int=50){val end=System.nanoTime()+seconds*1000000000L;while(System.nanoTime()<end){if(eval(s,code)=="true")return;Thread.sleep(250)};throw AssertionError("DOM condition failed: $code; "+eval(s,"document.querySelector('#toast')?.textContent"))}
+ private fun nativeDiceVisible():Boolean {
+  fun matches(n:android.view.accessibility.AccessibilityNodeInfo?):Boolean {if(n==null)return false;if(n.text?.toString()=="DADOS 3D — CYBERPUNK RED")return true;for(i in 0 until n.childCount)if(matches(n.getChild(i)))return true;return false}
+  return matches(ins.uiAutomation.rootInActiveWindow)
+ }
  private fun shot(name:String){val bmp=ins.uiAutomation.takeScreenshot();File(ctx.filesDir,name).outputStream().use{bmp.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bmp.recycle()}
  @Test fun aImageAndGemini(){
 
@@ -45,7 +49,7 @@ class MediaDiceSpeechTest {
   eval(scenario,"document.querySelector('#sessionRecommended button').click()")
   assertEquals("true",eval(scenario,"document.querySelector('#sessionActionInput').value.length>10"))
   waitFor(scenario,"document.querySelector('#toast').textContent.includes('persistida')")
-  shot("r580-scene-imported.png")
+  eval(scenario,"document.activeElement?.blur();document.querySelector('#sceneIllustration').scrollIntoView({block:'center'})");Thread.sleep(500);shot("r580-scene-imported.png")
   // Native ACTION_SEND transports the same prompt that is copied, without a real external send.
   val sent=AtomicReference<Intent>();val monitor=object:Instrumentation.ActivityMonitor(){override fun onStartActivity(i:Intent):Instrumentation.ActivityResult?{if(i.action in listOf(Intent.ACTION_SEND,Intent.ACTION_CHOOSER,Intent.ACTION_VIEW)){sent.set(i);return Instrumentation.ActivityResult(0,null)};return null}}
   ins.addMonitor(monitor)
@@ -60,7 +64,7 @@ class MediaDiceSpeechTest {
   var scenario=ActivityScenario.launch(MainActivity::class.java);waitFor(scenario,"window.__cpredUiReady===true")
   try {
   eval(scenario,"window.__physicalResult=null;window.addEventListener('barbara:dice3d-result',e=>window.__physicalResult=e.detail,{once:true});document.querySelector('#tableDiceBtn').click();document.querySelector('#diceFormula').value='2d10+3';document.querySelector('#diceRollBtn').click()")
-  Thread.sleep(1000);shot("r580-dice-moving.png")
+  val shown=System.nanoTime()+12_000_000_000L;while(System.nanoTime()<shown&&!nativeDiceVisible())Thread.sleep(100);assertTrue("Native physical table never became visible",nativeDiceVisible());Thread.sleep(300);shot("r580-dice-moving.png")
   waitFor(scenario,"window.__physicalResult?.authority==='physical_top_face_verified_native'",35)
   assertEquals("true",eval(scenario,"window.__physicalResult.physics==='braseiro-physical-dice-2' && window.__physicalResult.values.reduce((a,b)=>a+b,0)+3===window.__physicalResult.total"))
   shot("r580-dice-result.png")
@@ -96,6 +100,11 @@ class MediaDiceSpeechTest {
   while(System.nanoTime()<failed){pollLocal();if(eval(scenario,"window.__localStatus?.state==='error'")=="true")break;Thread.sleep(100)}
   assertEquals("true",eval(scenario,"window.__localStatus?.state==='error' && window.__localStatus?.completedChunksCount===0"));assertEquals(1,stats().getInt("calls"))
   println("PASS: lazy catalogue, real Android TextToSpeech package binding and persisted voice, 5k+ narration via callbacks, tags removed, stop invalidates queue, synthesis error never advances blocks; test service is not Kokoro")
+  } finally {scenario.close()}
+ }
+ @Test fun dGeminiSpeech(){
+  var scenario=ActivityScenario.launch(MainActivity::class.java);waitFor(scenario,"window.__cpredUiReady===true")
+  try {
   // Use the real native synthesis orchestration + AudioTrack with an HTTP fixture.
   // This does not contact Gemini or use a real API key.
   val requests=CopyOnWriteArrayList<JSONObject>()

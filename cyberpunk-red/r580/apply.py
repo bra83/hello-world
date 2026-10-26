@@ -98,6 +98,8 @@ def apply(root):
     s=s.replace("    this.toast('Prompt copiado. Abra o Gemini e cole o texto.')", "    try{await navigator.clipboard.writeText(prompt)}catch{};this.toast('Prompt copiado. Abra o Gemini e cole o texto.')")
     p.write_text(s)
     p=app/'app.js';s=p.read_text()
+    s=one(s,'setTimeout(()=>workbench.importIncomingSceneImage?.(),350);',"const importSharedWhenReady=()=>bootCharacterReady.then(()=>workbench.importIncomingSceneImage?.());setTimeout(importSharedWhenReady,350);")
+    s=s.replace("window.addEventListener('barbara:shared-image-available',()=>workbench.importIncomingSceneImage?.());","window.addEventListener('barbara:shared-image-available',importSharedWhenReady);")
     s=s.replace('workbench.init().catch(e=>toast(`Ficha: ${e.message}`));',"workbench.init().catch(e=>{console.error('[CPRED_WORKBENCH_INIT]',e.message);toast(`Ficha: ${e.message}`)});")
     a=s.index(" const base=",s.index('function populateAndroidEngines('));b=s.index('\n}',a)
     s=s[:a]+''' const base='<option value="">Padrão local do aparelho</option>';

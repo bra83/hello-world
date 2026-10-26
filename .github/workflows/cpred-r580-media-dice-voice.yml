@@ -132,7 +132,7 @@ jobs:
             adb logcat -d > evidence/android/instrumentation-logcat.txt
             adb exec-out screencap -p > evidence/android/instrumentation-final.png
             for name in r580-scene-imported r580-dice-moving r580-dice-result r580-gemini-failure; do adb exec-out run-as com.braseiro.cyberpunkred cat files/$name.png > evidence/android/$name.png 2>/dev/null || true; done
-            python -c "from pathlib import Path; s=Path('instrumentation.log').read_text(); assert 'OK (3 tests)' in s and 'FAILURES' not in s, s"
+            python -c "from pathlib import Path; s=Path('instrumentation.log').read_text(); assert 'OK (4 tests)' in s and 'FAILURES' not in s, s"
             python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
       - name: Publish diagnostic evidence on failure
         if: failure()
