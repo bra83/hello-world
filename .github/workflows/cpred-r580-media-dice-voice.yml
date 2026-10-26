@@ -1,0 +1,163 @@
+name: Cyberpunk RED R5.80 media, native physics and speech and Android build
+on:
+  push:
+    branches: [fix/cyberpunk-r580-media-dice-voice]
+    paths: [cyberpunk-red/r580/**, cyberpunk-red/mobile-r573/tests/**, .github/workflows/cpred-r580-media-dice-voice.yml]
+  workflow_dispatch:
+concurrency:
+  group: cpred-r580-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recover exact reviewed Android source
+        run: |
+          curl --fail --location --retry 3 -o base.zip https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r579-reference-flow-20261025/CYBERPUNK_RED_4.1.79_ANDROID_SOURCE.zip
+          echo 'd364605d1464b1e7f4082cb108f336849fadb6dd207b1aa1e239f9f1c91b8eca  base.zip' | sha256sum --check
+          python -c "import zipfile; zipfile.ZipFile('base.zip').extractall('build-source')"
+          cp build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl /tmp/cpred578-baseline.whl
+          python cyberpunk-red/r580/apply.py build-source/android
+          rm -f build-source/android/local.properties
+      - name: Full opening contract and engine publication boundary
+        run: |
+          python cyberpunk-red/r579/tests/flow.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl patched build-source/android/app/src/main/assets/barbara/cyberpunk-red-4.0.0.zip | tee opening.log
+          node cyberpunk-red/r579/tests/opening_ui.mjs "$PWD/build-source/android" | tee opening-ui.log
+      - name: Native speech contract and physical top-face simulations
+        run: |
+          curl --fail --location --silent --show-error -o /tmp/json.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+          mkdir -p /tmp/cpred-contracts
+          javac -cp /tmp/json.jar -d /tmp/cpred-contracts cyberpunk-red/r580/native/PhysicalDiceEngine.java cyberpunk-red/r580/native/DiceRollSpec.java cyberpunk-red/r580/native/GeminiSpeechWire.java cyberpunk-red/r580/tests/ContractTest.java
+          java -cp /tmp/json.jar:/tmp/cpred-contracts ContractTest | tee contracts.log
+      - name: Rules regression
+        run: node --test cyberpunk-red/adventure-engine/tests/*.test.mjs
+      - name: Retain persistence and failure recovery regressions
+        run: |
+          python cyberpunk-red/r575/tests/state_budget.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl patched | tee state-budget.log
+          node cyberpunk-red/r575/tests/start_failure.mjs "$PWD/build-source/android" | tee start-failure.log
+          node cyberpunk-red/r576/tests/failure_status.mjs "$PWD/build-source/android" | tee failure-status.log
+      - name: Install browser for real click tests
+        run: |
+          npm install --prefix /tmp/cpred-browser --no-save playwright@1.51.1
+          CPRED_BROWSER_BIN=$(command -v google-chrome || command -v chromium || true)
+          if [ -n "$CPRED_BROWSER_BIN" ]; then
+            echo "CPRED_CHROME=$CPRED_BROWSER_BIN" >> "$GITHUB_ENV"
+          else
+            node /tmp/cpred-browser/node_modules/playwright/cli.js install --with-deps chromium
+          fi
+      - name: Exercise mobile navigation and asynchronous transport
+        env:
+          NODE_PATH: /tmp/cpred-browser/node_modules
+          CPRED_TEST_URL: http://127.0.0.1:8091/build-source/android/app/src/main/assets/web/app/
+          CPRED_TEST_OUTPUT: ${{ github.workspace }}/evidence/browser
+        run: |
+          python -m http.server 8091 --bind 127.0.0.1 > /tmp/cpred-http.log 2>&1 &
+          CPRED_HTTP_PID=$!
+          trap 'kill "$CPRED_HTTP_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do curl --silent --fail http://127.0.0.1:8091/ >/dev/null && break; sleep 0.2; done
+          curl --silent --fail http://127.0.0.1:8091/ >/dev/null
+          node cyberpunk-red/mobile-r573/tests/navigation.cjs | tee navigation.log
+          node cyberpunk-red/mobile-r573/tests/characters.cjs | tee characters.log
+          node cyberpunk-red/r576/tests/grounding_ui.cjs | tee grounding-ui.log
+          node cyberpunk-red/r577/tests/settings_ui.cjs | tee settings-ui.log
+          node cyberpunk-red/r580/tests/media.cjs | tee media.log
+          python cyberpunk-red/mobile-r573/tests/narrative_repair.py build-source/android/app/wheels/motor_barbara-1.1.2-py3-none-any.whl | tee narrative.log
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android platform
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Fingerprint compiled sources
+        id: fingerprint
+        run: echo "sha=$(cat cyberpunk-red/r580/apply.py cyberpunk-red/r580/native/*.java cyberpunk-red/r580/web/*.js cyberpunk-red/r580/androidTest/* | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: apkcache
+        with:
+          path: |
+            build-source/android/app/build/outputs/apk/debug/app-debug.apk
+            build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android-build.log
+          key: cpred-r580-apk-${{ steps.fingerprint.outputs.sha }}
+      - name: Compile Android APK
+        if: steps.apkcache.outputs.cache-hit != 'true'
+        working-directory: build-source/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest --stacktrace 2>&1 | tee ../../android-build.log
+      - uses: actions/cache/save@v4
+        if: steps.apkcache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            build-source/android/app/build/outputs/apk/debug/app-debug.apk
+            build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android-build.log
+          key: cpred-r580-apk-${{ steps.fingerprint.outputs.sha }}
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Touch navigation in Android WebView
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_4
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
+            adb install -r build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -e class com.braseiro.cyberpunkred.MediaDiceSpeechTest com.braseiro.cyberpunkred.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.log
+            python -c "from pathlib import Path; s=Path('instrumentation.log').read_text(); assert 'OK (1 test)' in s and 'FAILURES' not in s, s"
+            adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-scene-imported.png > evidence/android/r580-scene-imported.png
+            adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-dice-moving.png > evidence/android/r580-dice-moving.png
+            adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-dice-result.png > evidence/android/r580-dice-result.png
+      - name: Publish diagnostic evidence on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p evidence
+          zip -qr failure-evidence.zip evidence
+          TAG=cyberpunk-red-r580-diagnostics-20261025
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk 4.1.80 diagnostic evidence' --notes 'Automated screenshots and logs for debugging, no APK.'
+          gh release upload "$TAG" failure-evidence.zip --clobber
+      - name: Package source and APK
+        run: |
+          mkdir -p deliverables
+          cp build-source/android/app/build/outputs/apk/debug/app-debug.apk deliverables/BRASEIRO_CYBERPUNK_RED_4.1.80.apk
+          rm -f build-source/android/local.properties
+          cd build-source
+          zip -qr ../deliverables/CYBERPUNK_RED_4.1.80_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/.kotlin/*'
+          cd ..
+          cp navigation.log android-build.log characters.log narrative.log contracts.log media.log instrumentation.log opening.log opening-ui.log settings-ui.log state-budget.log start-failure.log failure-status.log grounding-ui.log deliverables/
+          cp -r evidence deliverables/
+          cd deliverables
+          zip -qr CYBERPUNK_RED_4.1.80_EVIDENCIAS.zip evidence
+          sha256sum *.apk *.zip > SHA256SUMS.txt
+      - name: Publish tested build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=cyberpunk-red-r580-media-dice-voice-20261025
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk RED 4.1.80 — fluxo de narração baseado no Forbidden Lands' --notes 'Corrige importação nativa de imagem e mantém imagem/controles acima do texto; escolhas visíveis; intent Gemini com prompt; mesa nativa Forbidden Lands com números projetados nas faces; motor Kokoro real selecionado sem substituição silenciosa; REST Gemini 3.8 e WAV/PCM corrigidos. Inclui contratos JVM, regressões e testes Android reais de mídia/dados/reprodução AudioTrack com HTTP injetado, sem chave real.'
+          gh release upload "$TAG" deliverables/*.apk deliverables/*.zip deliverables/*.txt deliverables/*.log --clobber
