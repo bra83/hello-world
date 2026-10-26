@@ -60,6 +60,17 @@ def saved_model():
     xml=adb('exec-out','run-as',package,'cat','shared_prefs/cpred-secure-runtime.xml')
     return next(n.text for n in ET.fromstring(xml) if n.get('name')=='gemini_text_model')
 
+def reopen_ready():
+    adb('shell','am','force-stop',package)
+    adb('logcat','-c')
+    adb('shell','am','start','-n',package+'/.MainActivity')
+    # HTML buttons are visible before their handlers are registered. Never tap
+    # an inert initial menu and then misdiagnose the missing sheet as app failure.
+    for _ in range(60):
+        if '[CPRED_UI_READY]' in adb('logcat','-d','-s','CPRED_WEBVIEW:*'):return
+        time.sleep(1)
+    raise AssertionError('Reopened app failed to finish boot')
+
 adb('install','-r',apk);adb('logcat','-c')
 adb('shell','input','keyevent','KEYCODE_WAKEUP');adb('shell','wm','dismiss-keyguard')
 adb('shell','am','start','-n',package+'/.MainActivity')
@@ -74,7 +85,7 @@ for _ in range(30):
     if saved_model()=='gemini-2.5-flash':break
     time.sleep(.5)
 else:raise AssertionError('Native save silently reverted prefixed model')
-adb('shell','am','force-stop',package);adb('shell','am','start','-n',package+'/.MainActivity')
+reopen_ready()
 settings_page();wait_model='gemini-2.5-flash'
 for _ in range(15):
     if text_model_field().get('text')==wait_model:break
@@ -86,7 +97,7 @@ for _ in range(30):
     if saved_model()=='gemini-2.5-flash-lite':break
     time.sleep(.5)
 else:raise AssertionError('Native save did not persist explicit legacy model')
-adb('shell','am','force-stop',package);adb('shell','am','start','-n',package+'/.MainActivity')
+reopen_ready()
 settings_page();wait_model='gemini-2.5-flash-lite'
 for _ in range(15):
     if text_model_field().get('text')==wait_model:break
