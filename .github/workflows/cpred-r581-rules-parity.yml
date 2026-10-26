@@ -1,7 +1,7 @@
 name: Cyberpunk RED R5.81 rules parity, native combat, netrun and Android build
 on:
   push:
-    branches: [audit/cpred-r581-rules-parity]
+    branches: [audit/cpred-r581-rules-parity, fix/cpred-r583-final-integrity-20261026]
     paths: ['cyberpunk-red/**', 'audit/**', '.github/workflows/cpred-r581-rules-parity.yml']
   workflow_dispatch:
 concurrency:
@@ -97,7 +97,7 @@ jobs:
             build-source/android/app/build/outputs/apk/debug/app-debug.apk
             build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             android-build.log
-          key: cpred-r581-apk-${{ steps.fingerprint.outputs.sha }}
+          key: cpred-r583-apk-${{ steps.fingerprint.outputs.sha }}
       - name: Compile Android APK
         if: steps.apkcache.outputs.cache-hit != 'true'
         working-directory: build-source/android
@@ -112,12 +112,12 @@ jobs:
             build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             android-build.log
           key: cpred-r581-apk-${{ steps.fingerprint.outputs.sha }}
-      - name: Verify APK signature with canonical certificate
+      - name: Verify debug APK integrity (NOT an upgrade release)
         run: |
-          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner -type f | sort -V | tail -n 1)
-          echo "Found apksigner at: $APKSIGNER"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
           "$APKSIGNER" verify --print-certs build-source/android/app/build/outputs/apk/debug/app-debug.apk | tee apksigner.log
-          grep -qi "6aa87a24a2eb4762c3f493c9d5fddbf10b60cc8659a90423aed7cde8ae582bd3" apksigner.log || { echo "ERROR: Certificate mismatch"; exit 1; }
+          echo "DEBUG APK ONLY — no public or legacy signing key embedded in source."
+
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -165,10 +165,3 @@ jobs:
           cd deliverables
           zip -qr CYBERPUNK_RED_4.1.82_EVIDENCIAS.zip evidence
           sha256sum *.apk *.zip > SHA256SUMS.txt
-      - name: Publish tested build
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG=cyberpunk-red-r581-rules-parity-20261026
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk RED 4.1.82 — paridade canônica de regras, combate nativo, netrunning e persistência' --notes 'Fechamento definitivo da auditoria de regras: combate nativo com dano, blindagem e ferimentos críticos canônicos; netrunning com 6 arquiteturas e orçamento de ações; interpretação física de dados; avanço de relógio transacional idempotente; remoção de stubs e fallbacks genéricos; 314 testes automatizados 100% aprovados; 5 testes de instrumentação Android incluindo 3 ciclos de salvar/matar/reabrir; certificado canônico SHA-256 6aa87a24a2eb4762c3f493c9d5fddbf10b60cc8659a90423aed7cde8ae582bd3 preservado.'
-          gh release upload "$TAG" deliverables/*.apk deliverables/*.zip deliverables/*.txt deliverables/*.log --clobber
