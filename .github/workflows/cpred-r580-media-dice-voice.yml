@@ -125,7 +125,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
+            adb install -r build-source/android/app/build/outputs/apk/debug/app-debug.apk
+            mkdir -p evidence/android
             adb install -r build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -e class com.braseiro.cyberpunkred.MediaDiceSpeechTest com.braseiro.cyberpunkred.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.log
             adb logcat -d > evidence/android/instrumentation-logcat.txt
@@ -134,6 +135,7 @@ jobs:
             adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-scene-imported.png > evidence/android/r580-scene-imported.png
             adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-dice-moving.png > evidence/android/r580-dice-moving.png
             adb exec-out run-as com.braseiro.cyberpunkred cat files/r580-dice-result.png > evidence/android/r580-dice-result.png
+            python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
       - name: Publish diagnostic evidence on failure
         if: failure()
         env:
