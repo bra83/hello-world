@@ -3576,22 +3576,103 @@ class BarbaraRuntime(private val context: Context) {
             }
 
             "CYBERWARE_INSTALL" -> {
-                val cwId = action.optString("cyberwareId", action.optString("itemId"))
-                val hlCost = action.optInt("humanityLoss", action.optInt("hl", 7))
-                val currentHumanity = derived.optInt("humanity", 50)
-                val newHumanity = maxOf(0, currentHumanity - hlCost)
-                derived.put("humanity", newHumanity)
-                val cwArray = c.optJSONArray("cyberware") ?: JSONArray().also { c.put("cyberware", it) }
-                cwArray.put(JSONObject().put("id", cwId).put("installed", true).put("hl", hlCost))
-
+                val denyInstall = { reason: String ->
+                    JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("authority", "barbara-host-bridge").put("type", type).put("actionId", actionId)
+                        .put("reason", reason)
+                }
+                val cyberwareId = action.optString("cyberwareId", action.optString("itemId")).trim()
+                val txKey = action.optString("idempotencyKey", action.optString("id")).trim()
+                if (cyberwareId.isEmpty()) return denyInstall("CYBERWARE_ID_REQUIRED")
+                if (txKey.isEmpty()) return denyInstall("INSTALL_IDEMPOTENCY_KEY_REQUIRED")
+                val item = equipmentItem(cyberwareId, c) ?: return denyInstall("UNKNOWN_CANONICAL_CYBERWARE")
+                val itemType = item.optString("type", item.optString("category")).lowercase()
+                if (!itemType.contains("cyber") && !item.has("humanityLoss") &&
+                    !item.has("humanityLossDice")) return denyInstall("ITEM_NOT_CYBERWARE")
+                val campaign = campaignStateOf(c)
+                val ledger = campaign.optJSONObject("cyberwareInstallReceiptsV3")
+                    ?: JSONObject().also { campaign.put("cyberwareInstallReceiptsV3", it) }
+                val replay = ledger.optJSONObject(txKey)
+                if (replay != null) {
+                    if (replay.optString("cyberwareId") != cyberwareId) return denyInstall("INSTALL_IDEMPOTENCY_CONFLICT")
+                    return JSONObject(replay.toString()).put("replayed", true)
+                }
+                val inv = c.optJSONArray("inventory") ?: return denyInstall("CYBERWARE_NOT_OWNED")
+                var ownedRow: JSONObject? = null
+                for (i in 0 until inv.length()) {
+                    val row = inv.optJSONObject(i) ?: continue
+                    if (row.optString("itemId", row.optString("id")) == cyberwareId &&
+                        row.optInt("quantity", 1) > 0) { ownedRow = row; break }
+                }
+                if (ownedRow == null) return denyInstall("CYBERWARE_NOT_OWNED")
+                val installed = c.optJSONArray("cyberware") ?: JSONArray().also { c.put("cyberware", it) }
+                for (i in 0 until installed.length()) {
+                    val other = installed.optJSONObject(i) ?: continue
+                    if (other.optString("id") == cyberwareId && other.optBoolean("installed", true))
+                        return denyInstall("CYBERWARE_ALREADY_INSTALLED")
+                }
+                val slot = item.optString("slot", item.optString("installationSlot")).trim()
+                val capacity = c.optJSONObject("cyberwareSlots")?.optInt(slot, -1) ?: -1
+                if (slot.isBlank() || capacity <= 0) return denyInstall("CYBERWARE_SLOT_CAPACITY_UNVERIFIED")
+                val occupied = (0 until installed.length()).count { i ->
+                    val other = installed.optJSONObject(i)
+                    other != null && other.optString("slot") == slot && other.optBoolean("installed", true)
+                }
+                if (occupied >= capacity) return denyInstall("CYBERWARE_SLOT_FULL")
+                val clinicianId = action.optString("clinicianId").trim()
+                val clinicianRaw = if (clinicianId.isNotEmpty()) storedCharacter(clinicianId) else null
+                if (clinicianRaw == null) return denyInstall("QUALIFIED_CLINICIAN_REQUIRED")
+                val clinician = JSONObject(clinicianRaw)
+                val clinicianRole = clinician.optString("role").lowercase()
+                if (clinicianRole != "medtech") return denyInstall("MEDTECH_SURGERY_REQUIRED")
+                val surgeryRank = clinician.optJSONObject("roleAbilities")?.optInt("surgery",
+                    clinician.optInt("surgeryRank", 0)) ?: clinician.optInt("surgeryRank", 0)
+                val tech = clinician.optJSONObject("stats")?.optInt("TECH", 0) ?: 0
+                if (surgeryRank < 1 || tech < 1) return denyInstall("INSUFFICIENT_SURGICAL_SKILL")
+                val tier = item.optString("typicalInstall", item.optString("surgeryTier")).lowercase()
+                val dv = when (tier) {
+                    "mall" -> 13
+                    "clinic" -> 15
+                    "hospital" -> 17
+                    else -> return denyInstall("UNKNOWN_CANONICAL_SURGERY_TIER")
+                }
+                val surgeryRoll = evaluateDiceExpression("1d10")
+                val total = tech + surgeryRank + surgeryRoll.total
+                if (total <= dv) return denyInstall("CYBERWARE_SURGERY_FAILED")
+                val humanityFormula = item.optString("humanityLossDice", "").trim()
+                val hl = if (humanityFormula.isNotEmpty()) {
+                    if (!Regex("""^\d{1,2}d6([+-]\d+)?$""").matches(humanityFormula.lowercase()))
+                        return denyInstall("INVALID_CANONICAL_HUMANITY_DICE")
+                    evaluateDiceExpression(humanityFormula).total
+                } else item.optInt("humanityLoss", -1)
+                if (hl < 0 || hl > 100) return denyInstall("CANONICAL_HUMANITY_LOSS_REQUIRED")
+                val currentHumanity = derived.optInt("humanity", -1)
+                val maximumHumanity = derived.optInt("maxHumanity", -1)
+                if (currentHumanity < 0 || maximumHumanity < 0) return denyInstall("HUMANITY_STATE_REQUIRED")
+                val newHumanity = (currentHumanity - hl).coerceAtLeast(0)
+                val maxReduction = if (item.optBoolean("borgware", false)) 4 else 2
+                val newMaximum = (maximumHumanity - maxReduction).coerceAtLeast(0)
+                derived.put("maxHumanity", newMaximum)
+                derived.put("humanity", minOf(newHumanity, newMaximum))
+                c.optJSONObject("stats")?.put("EMP", (derived.optInt("humanity") / 10).coerceAtLeast(0))
+                val oldQuantity = ownedRow.optInt("quantity", 1)
+                // Consume owned inventory atomically with installation and Humanity change.
+                if (oldQuantity == 1) {
+                    for (i in 0 until inv.length()) if (inv.optJSONObject(i) === ownedRow) { inv.remove(i); break }
+                } else ownedRow.put("quantity", oldQuantity - 1)
+                installed.put(JSONObject().put("id", cyberwareId).put("slot", slot).put("installed", true)
+                    .put("hl", hl).put("surgeryTier", tier))
+                val receipt = JSONObject().put("ok", true).put("resolved", true).put("blocked", false)
+                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
+                    .put("cyberwareId", cyberwareId).put("idempotencyKey", txKey)
+                    .put("humanityLoss", hl).put("humanityAfter", derived.optInt("humanity"))
+                    .put("surgeryDV", dv).put("surgeryTotal", total).put("slot", slot)
+                    .put("passed", true).put("outcome", "INSTALLED").put("persisted", true)
+                ledger.put(txKey, receipt)
                 runBlocking(Dispatchers.IO) {
                     characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
                 }
-                return JSONObject()
-                    .put("ok", true).put("resolved", true).put("blocked", false)
-                    .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
-                    .put("cyberwareId", cwId).put("humanityLoss", hlCost).put("humanityAfter", newHumanity)
-                    .put("passed", true).put("outcome", "INSTALLED").put("persisted", true)
+                return receipt
             }
 
             "ROLLER_DERBY" -> {
