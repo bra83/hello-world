@@ -46,7 +46,7 @@ class MediaDiceSpeechTest {
   ins.addMonitor(monitor)
   eval(scenario,"document.querySelector('#sceneGeminiBtn').click()")
   val stop=System.nanoTime()+10_000_000_000L;while(sent.get()==null&&System.nanoTime()<stop)Thread.sleep(100)
-  assertNotNull("No external prompt intent",sent.get());val outer=sent.get();@Suppress("DEPRECATION") val outbound=if(outer.action==Intent.ACTION_CHOOSER)outer.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!! else outer
+  if(sent.get()==null){shot("r580-gemini-failure.png");println("GEMINI_DIAG: "+eval(scenario,"JSON.stringify({toast:document.querySelector('#toast')?.textContent,bridge:typeof globalThis.AndroidScene?.openGemini,prompt:document.querySelector('#scenePrompt')?.value?.length})"))};assertNotNull("No external prompt intent",sent.get());val outer=sent.get();@Suppress("DEPRECATION") val outbound=if(outer.action==Intent.ACTION_CHOOSER)outer.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!! else outer
   assertTrue("Prompt absent from intent",outbound.getStringExtra(Intent.EXTRA_TEXT).orEmpty().contains("Cyberpunk RED"));ins.removeMonitor(monitor)
   Thread.sleep(1500);scenario.close();scenario=ActivityScenario.launch(MainActivity::class.java);waitFor(scenario,"window.__cpredUiReady===true");waitFor(scenario,"document.querySelector('#sceneIllustration')?.naturalWidth>0")
   eval(scenario,"window.__physicalResult=null;window.addEventListener('barbara:dice3d-result',e=>window.__physicalResult=e.detail,{once:true});document.querySelector('#tableDiceBtn').click();document.querySelector('#diceFormula').value='2d10+3';document.querySelector('#diceRollBtn').click()")

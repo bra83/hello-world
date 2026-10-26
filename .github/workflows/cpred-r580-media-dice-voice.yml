@@ -88,7 +88,7 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - name: Fingerprint compiled sources
         id: fingerprint
-        run: echo "sha=$(cat cyberpunk-red/r580/apply.py cyberpunk-red/r580/native/*.java cyberpunk-red/r580/web/*.js cyberpunk-red/r580/androidTest/* | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "sha=$(cat cyberpunk-red/r580/apply.py cyberpunk-red/r580/native/* cyberpunk-red/r580/web/*.js cyberpunk-red/r580/androidTest/* | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         id: apkcache
         with:

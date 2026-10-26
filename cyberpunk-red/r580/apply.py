@@ -14,6 +14,12 @@ def apply(root):
     s=one(s,'contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }','contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds); Unit }')
     s=one(s,'                    "com.google.android.googlequicksearchbox",\n','')
     s=s.replace('diceOverlay.postDelayed({ diceOverlay.visibility = View.GONE }, 950L)','diceOverlay.visibility = View.GONE')
+    s=one(s,'''            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("Prompt da cena Cyberpunk RED", clean))
+            runOnUiThread {''','''            runOnUiThread {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Prompt da cena Cyberpunk RED", clean))
+                android.util.Log.i("CPRED_SCENE", "Opening Gemini prompt intent; chars=${clean.length}")''')
     p.write_text(s)
     p=root/'app/src/main/AndroidManifest.xml';s=p.read_text();s=one(s,'    <queries>','    <queries>\n        <package android:name="com.google.android.apps.bard" />\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="text/plain" /></intent>')
     s=one(s,'android:windowSoftInputMode="adjustResize"','android:windowSoftInputMode="adjustResize"\n            android:launchMode="singleTop"');p.write_text(s)
@@ -86,6 +92,7 @@ def apply(root):
     # Prompt now includes the real accepted scene, instead of generic Night City decoration.
     s=one(s,'\\nMomento: ${String(s?.lastAction', '\\nCena aceita pelo Mestre: ${String(s?.currentNarration||\'\').slice(0,8000)}.\\nMomento: ${String(s?.lastAction')
     s=s.replace("try{await navigator.clipboard.writeText(prompt)}catch{};const native=", "const native=")
+    s=s.replace("if(out?.ok)return this.toast('Prompt copiado. Gemini aberto; cole se o app não aceitar preenchimento automático.')}catch{}", "if(out?.ok)return this.toast('Prompt enviado ao Android para abrir no Gemini.');throw new Error(out?.error||'Falha ao abrir o aplicativo')}catch(error){console.error('[CPRED_GEMINI_OPEN]',error.message);return this.toast('Não foi possível abrir Gemini: '+error.message)}")
     s=s.replace("    this.toast('Prompt copiado. Abra o Gemini e cole o texto.')", "    try{await navigator.clipboard.writeText(prompt)}catch{};this.toast('Prompt copiado. Abra o Gemini e cole o texto.')")
     p.write_text(s)
     p=app/'app.js';s=p.read_text()
