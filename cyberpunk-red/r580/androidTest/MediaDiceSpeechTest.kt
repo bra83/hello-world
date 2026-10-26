@@ -59,13 +59,13 @@ class MediaDiceSpeechTest {
   val pcm=ByteBuffer.allocate(24000).order(ByteOrder.LITTLE_ENDIAN).apply{for(i in 0 until 12000)putShort((sin(i*2*Math.PI*220/24000)*1500).toInt().toShort())}.array()
   URL.setURLStreamHandlerFactory{protocol->if(protocol=="https")object:URLStreamHandler(){override fun openConnection(url:URL):URLConnection{
     check(url.host=="generativelanguage.googleapis.com")
-    object:HttpURLConnection(url){val body=ByteArrayOutputStream();override fun connect(){};override fun disconnect(){};override fun usingProxy()=false;override fun getOutputStream():OutputStream=body
+    return object:HttpURLConnection(url){val body=ByteArrayOutputStream();override fun connect(){};override fun disconnect(){};override fun usingProxy()=false;override fun getOutputStream():OutputStream=body
      override fun getResponseCode():Int{requests.add(JSONObject(body.toString("UTF-8")));return 200}
      override fun getInputStream():InputStream=ByteArrayInputStream(JSONObject().put("candidates",org.json.JSONArray().put(JSONObject().put("content",JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text","metadata")).put(JSONObject().put("inlineData",JSONObject().put("mimeType","audio/l16;rate=24000").put("data",android.util.Base64.encodeToString(pcm,android.util.Base64.NO_WRAP)))))))).toString().toByteArray())
     }
   }}else null}
   val secrets=SecureSecretStore(ctx);val oldKey=secrets.apiKey();secrets.setApiKey("fixture-not-real")
-  secrets.savePublicSettings(ttsModel="gemini-3.8-flash-tts",voice="Charon",language="pt-BR",voiceProfile="Perfil de teste",voiceStyle="narration")
+  secrets.savePublicSettings(textModel=null,ttsModel="gemini-3.8-flash-tts",voice="Charon",language="pt-BR",voiceProfile="Perfil de teste",voiceStyle="narration")
   val service=GeminiTtsService(ctx,secrets)
   try{
    service.speakAsync("Night City nunca dorme. ".repeat(100));val end=System.nanoTime()+45_000_000_000L

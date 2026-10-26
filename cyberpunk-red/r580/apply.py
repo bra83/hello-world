@@ -89,9 +89,11 @@ def patch_android_tts(java):
     s=s.replace(' || p.contains("kokoro", ignoreCase = true) || p.contains("sherpa.onnx", ignoreCase = true)','')
     s=one(s,'val target = rawTarget ?: detectKokoroPackage()','val target = rawTarget\n        if (target != null) require(installedEngines().let { list -> (0 until list.length()).any { list.getJSONObject(it).optString("packageName") == target } }) { "Motor TTS selecionado não está instalado: $target" }')
     a=s.index('        if (rawTarget == null) {');b=s.index('        return ready',a);s=s[:a]+s[b:]
+    s=one(s,'if (target != activeEnginePackage || !ready) {','if ((target != null && target != activeEnginePackage) || (target == null && activeEnginePackage != null && activeEnginePackage != tts.defaultEngine) || !ready) {')
     # Never label an arbitrary saved Android engine as Kokoro.
     s=s.replace('v.locale?.language == "pt"','v.locale?.language in listOf("pt", "por")').replace('it.locale?.language == "pt"','it.locale?.language in listOf("pt", "por")')
     s=s.replace('?: voicesSet?.maxByOrNull(::voiceScore)','?: if (!isKokoro) voicesSet?.maxByOrNull(::voiceScore) else null')
+    s=one(s,'        when (style.lowercase()) {','        if (isKokoro) { tts.setSpeechRate(clampedSpeed);tts.setPitch(1.0f) } else when (style.lowercase()) {')
     s=s.replace('maxChunkChars: Int = 140','maxChunkChars: Int = 650').replace('maxChars: Int = 140','maxChars: Int = 650')
     s=s.replace('maxChunkChars.coerceIn(40, 3400)','maxChunkChars.coerceIn(350, 800)')
     # Confirm actual engine just as the reference plugin does; only default selection
@@ -99,7 +101,7 @@ def patch_android_tts(java):
     s=s.replace('        if (awaitReady()) return true', '''        if (awaitReady()) {
             val actual = runCatching { TextToSpeech::class.java.getMethod("getCurrentEngine").invoke(tts) as? String }.getOrNull()
                 ?: runCatching { TextToSpeech::class.java.getDeclaredField("mCurrentEngine").apply { isAccessible=true }.get(tts) as? String }.getOrNull()
-                ?: if (target == null) tts.defaultEngine else null
+                ?: if (target == null || target == tts.defaultEngine) tts.defaultEngine else null
             if (target != null && actual != target) { ready=false;state="error";lastError="Android não confirmou o motor selecionado: $target";error(lastError!!) }
             activeEnginePackage=actual
             return true
