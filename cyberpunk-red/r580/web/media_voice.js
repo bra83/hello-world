@@ -14,7 +14,7 @@ globalThis.BraseiroWatchSpeech=(engine=document.querySelector('#ttsEngine')?.val
    const target=engine==='gemini'?g:a;
    const error=target.error;
    const active=[target].find(s=>/queued|generating|playing/.test(s.state||'')||s.speaking);
-   const message=error?`Falha na voz: ${error}`:active?`Voz: ${active.state||'reproduzindo'}${active.activeEnginePackage?' · '+active.activeEnginePackage:''}${active.totalChunksQueued?' · bloco '+(active.currentChunkIndex||0)+'/'+active.totalChunksQueued:''}`:'Leitura concluída ou parada.';
+   const message=error?`Falha na voz: ${error}`:active?`Voz: ${active.state||'reproduzindo'}${active.activeEnginePackage?' · '+active.activeEnginePackage:''}${active.totalChunksQueued?' · bloco '+(active.currentChunkIndex||0)+'/'+active.totalChunksQueued:''}`:(target.interrupted||target.state==='stopped')?'Leitura interrompida. Toque em reproduzir para repetir.':target.totalChunksQueued>0&&target.completedChunksCount===target.totalChunksQueued?'Leitura concluída.':'Motor de voz aguardando reprodução.';
    const node=statusNode();if(node)node.textContent=message;const audio=document.getElementById('ttsStatus');if(audio)audio.textContent=message;
    if(active&&Date.now()-started<240000)speechTimer=setTimeout(poll,1000);
   }catch(e){if(epoch===speechEpoch){const node=statusNode();if(node)node.textContent='Não foi possível consultar a reprodução: '+e.message}}

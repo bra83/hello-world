@@ -72,7 +72,9 @@ def apply(root):
     p=app/'mobile_shell.js';s=p.read_text();s=one(s,"[$('.session-player-state'), $('#sessionRecommended'), $('#sessionFlowGuide')], master);","[$('.session-player-state'), $('#sessionFlowGuide')], master);\n    const actions=$('#sessionRecommended');if(actions)master.insertBefore(actions,$('.free-action-block'));" )
     s=one(s,"      fold('Imagem da cena · gerar ou importar', [media, $('#scenePrompt')], scene);", "      stack.insertBefore(scene,master);\n      // Image actions remain visible; only the optional editable prompt is folded.\n      fold('Editar prompt da imagem', [$('#scenePrompt')], scene);")
     p.write_text(s)
-    p=app/'sheets.js';s=p.read_text();s=s.replace("JSON.parse(native(prompt))","JSON.parse(globalThis.AndroidScene.openGemini(prompt))")
+    p=app/'sheets.js';s=p.read_text();s=one(s,'  async init(){','  async init(){\n    this.bind();')
+    s=one(s,'  bind(){','  bind(){\n    if(this.bound)return;this.bound=true;')
+    s=s.replace("JSON.parse(native(prompt))","JSON.parse(globalThis.AndroidScene.openGemini(prompt))")
     s=one(s,"const prompt=$('#scenePrompt')?.value.trim()||this.scenePromptText(this.character());", "const prompt=$('#scenePrompt')?.value.trim()||this.scenePromptText(this.character());if($('#scenePrompt'))$('#scenePrompt').value=prompt;")
     # Import errors used to be discarded silently when consumeSharedImage returned {ok:false}.
     s=one(s,"const out=JSON.parse(globalThis.AndroidScene.consumeSharedImage());if(out?.dataUrl)","const out=JSON.parse(globalThis.AndroidScene.consumeSharedImage());if(out?.ok===false){if(out.error!=='Nenhuma imagem compartilhada')this.toast(out.error||'Falha na importação da imagem');return}if(out?.dataUrl)")
@@ -96,6 +98,7 @@ def apply(root):
     s=s.replace("    this.toast('Prompt copiado. Abra o Gemini e cole o texto.')", "    try{await navigator.clipboard.writeText(prompt)}catch{};this.toast('Prompt copiado. Abra o Gemini e cole o texto.')")
     p.write_text(s)
     p=app/'app.js';s=p.read_text()
+    s=s.replace('workbench.init().catch(e=>toast(`Ficha: ${e.message}`));',"workbench.init().catch(e=>{console.error('[CPRED_WORKBENCH_INIT]',e.message);toast(`Ficha: ${e.message}`)});")
     a=s.index(" const base=",s.index('function populateAndroidEngines('));b=s.index('\n}',a)
     s=s[:a]+''' const base='<option value="">Padrão local do aparelho</option>';
  const extras=values.filter(e=>e.packageName).map(e=>`<option value="${String(e.packageName).replace(/"/g,'&quot;')}">${String(e.label||e.packageName)} (${String(e.packageName)})</option>`).join('');

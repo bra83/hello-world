@@ -6,6 +6,8 @@ import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.FixMethodOrder
+import org.junit.runners.MethodSorters
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -17,6 +19,7 @@ import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.sin
 
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 @RunWith(AndroidJUnit4::class)
 class MediaDiceSpeechTest {
  private val ins=InstrumentationRegistry.getInstrumentation()
@@ -30,9 +33,11 @@ class MediaDiceSpeechTest {
  }
  private fun waitFor(s:ActivityScenario<MainActivity>,code:String,seconds:Int=50){val end=System.nanoTime()+seconds*1000000000L;while(System.nanoTime()<end){if(eval(s,code)=="true")return;Thread.sleep(250)};throw AssertionError("DOM condition failed: $code; "+eval(s,"document.querySelector('#toast')?.textContent"))}
  private fun shot(name:String){val bmp=ins.uiAutomation.takeScreenshot();File(ctx.filesDir,name).outputStream().use{bmp.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bmp.recycle()}
- @Test fun fullMediaDiceSpeech(){
+ @Test fun aImageAndGemini(){
+
   val intent=Intent(Intent.ACTION_SEND).apply{setClassName(ctx.packageName,MainActivity::class.java.name);type="image/png";putExtra(Intent.EXTRA_STREAM,Uri.parse("content://com.braseiro.cyberpunkred.test.media/scene.png"));addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)}
   var scenario=ActivityScenario.launch<MainActivity>(intent)
+  try {
   waitFor(scenario,"window.__cpredUiReady===true")
   waitFor(scenario,"document.querySelector('#sceneIllustration')?.naturalWidth>0")
   assertEquals("true",eval(scenario,"document.querySelector('#sceneIllustration').getBoundingClientRect().top<document.querySelector('#tableNarrative').getBoundingClientRect().top"))
@@ -49,12 +54,21 @@ class MediaDiceSpeechTest {
   if(sent.get()==null){shot("r580-gemini-failure.png");println("GEMINI_DIAG: "+eval(scenario,"JSON.stringify({toast:document.querySelector('#toast')?.textContent,bridge:typeof globalThis.AndroidScene?.openGemini,prompt:document.querySelector('#scenePrompt')?.value?.length})"))};assertNotNull("No external prompt intent",sent.get());val outer=sent.get();@Suppress("DEPRECATION") val outbound=if(outer.action==Intent.ACTION_CHOOSER)outer.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!! else outer
   assertTrue("Prompt absent from intent",outbound.getStringExtra(Intent.EXTRA_TEXT).orEmpty().contains("Cyberpunk RED"));ins.removeMonitor(monitor)
   Thread.sleep(1500);scenario.close();scenario=ActivityScenario.launch(MainActivity::class.java);waitFor(scenario,"window.__cpredUiReady===true");waitFor(scenario,"document.querySelector('#sceneIllustration')?.naturalWidth>0")
+  } finally {scenario.close()}
+ }
+ @Test fun bPhysicalDice(){
+  var scenario=ActivityScenario.launch(MainActivity::class.java);waitFor(scenario,"window.__cpredUiReady===true")
+  try {
   eval(scenario,"window.__physicalResult=null;window.addEventListener('barbara:dice3d-result',e=>window.__physicalResult=e.detail,{once:true});document.querySelector('#tableDiceBtn').click();document.querySelector('#diceFormula').value='2d10+3';document.querySelector('#diceRollBtn').click()")
   Thread.sleep(1000);shot("r580-dice-moving.png")
   waitFor(scenario,"window.__physicalResult?.authority==='physical_top_face_verified_native'",35)
   assertEquals("true",eval(scenario,"window.__physicalResult.physics==='braseiro-physical-dice-2' && window.__physicalResult.values.reduce((a,b)=>a+b,0)+3===window.__physicalResult.total"))
   shot("r580-dice-result.png")
-  println("PASS: Android shared image decoded/displayed above text/persisted after reopen; actions visible; Gemini prompt native intent; physical FL dice native top-face result")
+  } finally {scenario.close()}
+ }
+ @Test fun cNativeSpeech(){
+  var scenario=ActivityScenario.launch(MainActivity::class.java);waitFor(scenario,"window.__cpredUiReady===true")
+  try {
   // Real Android binder/service fixture proves selection reaches the backend, not neural quality.
   val probe=AndroidTtsService(ctx);assertFalse(probe.status().getBoolean("ready"));probe.installedEngines();assertFalse(probe.status().getBoolean("ready"));probe.close()
   val mediaUri=Uri.parse("content://com.braseiro.cyberpunkred.test.media/scene.png")
@@ -103,5 +117,6 @@ class MediaDiceSpeechTest {
    for(r in requests){assertFalse(r.has("systemInstruction"));assertTrue(r.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).has("speech_metadata"))}
    println("PASS: native Gemini TTS HTTP fixture -> multiple chunks -> real AudioTrack playback -> idle; voice/style metadata preserved, no real key/network")
   }finally{service.close();scenario.close();if(oldKey==null)secrets.clearApiKey()else secrets.setApiKey(oldKey)}
+  } finally {scenario.close()}
  }
 }
