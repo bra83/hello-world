@@ -3313,7 +3313,23 @@ class BarbaraRuntime(private val context: Context) {
             }
 
             "COMBAT_RESOLUTION", "DAMAGE" -> {
+                val txKey = action.optString("idempotencyKey", action.optString("id")).trim()
+                if (txKey.isEmpty()) return JSONObject().put("ok", false).put("resolved", false)
+                    .put("blocked", true).put("reason", "COMBAT_ACTION_ID_REQUIRED")
+                val combatCampaign = campaignStateOf(c)
+                val combatLedger = combatCampaign.optJSONObject("combatReceiptsV3")
+                    ?: JSONObject().also { combatCampaign.put("combatReceiptsV3", it) }
+                val prior = combatLedger.optJSONObject(txKey)
+                if (prior != null) {
+                    if (prior.optString("type") != type) return JSONObject().put("ok", false)
+                        .put("resolved", false).put("blocked", true).put("reason", "COMBAT_ACTION_ID_REUSED")
+                    return JSONObject(prior.toString()).put("replayed", true)
+                }
                 val formula = action.optString("formula", if (action.has("damageDice")) "${action.getInt("damageDice")}d6" else "3d6")
+                if (!Regex("""^\d{1,2}d6([+-]\d{1,4})?$""").matches(formula.trim().lowercase())) {
+                    return JSONObject().put("ok", false).put("resolved", false).put("blocked", true)
+                        .put("reason", "INVALID_CANONICAL_DAMAGE_DICE")
+                }
                 val eval = evaluateDiceExpression(formula)
                 val rawDamage = eval.total
                 val armorObj = c.optJSONObject("armor")
@@ -3375,11 +3391,7 @@ class BarbaraRuntime(private val context: Context) {
                 }
                 derived.put("woundState", newWoundState)
 
-                runBlocking(Dispatchers.IO) {
-                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
-                }
-
-                return JSONObject()
+                val receipt = JSONObject()
                     .put("ok", true).put("resolved", true).put("blocked", false)
                     .put("authority", "barbara-host-bridge").put("actionId", actionId).put("type", type)
                     .put("formula", formula).put("rolls", JSONArray(eval.rolls)).put("rawDamage", rawDamage)
@@ -3389,6 +3401,11 @@ class BarbaraRuntime(private val context: Context) {
                     .put("criticalInjuryEffect", critEffect ?: JSONObject.NULL)
                     .put("hpBefore", currentHp).put("hpAfter", newHp).put("maxHp", maxHp).put("woundState", newWoundState)
                     .put("passed", true).put("outcome", "RESOLVED").put("persisted", true)
+                combatLedger.put(txKey, receipt)
+                runBlocking(Dispatchers.IO) {
+                    characters.upsert(CyberpunkCharacterEntity(charId, c.toString(), System.currentTimeMillis()))
+                }
+                return receipt
             }
 
             "OPPOSED_CHECK", "BAR_BRAWL_OPPOSED_CHECK" -> {
