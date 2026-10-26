@@ -221,6 +221,7 @@ class MediaDiceSpeechTest {
     scenario.close()
     println("PASS: 3 cycles of save, kill/close and relaunch verified across SQLite and WebView lifecycle")
    } finally {
+    runCatching { kotlinx.coroutines.runBlocking { dao.delete(testId) } }
     db.close()
    }
   }

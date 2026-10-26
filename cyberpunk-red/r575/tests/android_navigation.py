@@ -67,7 +67,7 @@ def tap(label):
     raise AssertionError(f'Visible control not found: {label}')
 
 try:
-    adb('shell', 'pm', 'clear', package)
+    adb('shell', 'run-as', package, 'rm', '-f', 'databases/cyberpunk-red-adapter.sqlite3', 'databases/cyberpunk-red-adapter.sqlite3-wal', 'databases/cyberpunk-red-adapter.sqlite3-shm')
 except Exception:
     pass
 adb('install', '-r', apk)

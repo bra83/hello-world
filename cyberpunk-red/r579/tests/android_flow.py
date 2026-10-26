@@ -71,10 +71,6 @@ def reopen_ready():
         time.sleep(1)
     raise AssertionError('Reopened app failed to finish boot')
 
-try:
-    adb('shell','pm','clear',package)
-except Exception:
-    pass
 adb('install','-r',apk);adb('logcat','-c')
 adb('shell','input','keyevent','KEYCODE_WAKEUP');adb('shell','wm','dismiss-keyguard')
 adb('shell','am','start','-n',package+'/.MainActivity')
