@@ -45,7 +45,7 @@ def tap(label):
             wanted=label.upper()
             alternatives={'SALVAR':['SALVAR','SAVE']}.get(wanted,[wanted])
             bounds=list(map(int,re.findall(r'\d+',node.get('bounds',''))))
-            visible=len(bounds)==4 and bounds[2]>bounds[0] and bounds[3]>bounds[1]
+            visible=len(bounds)==4 and bounds[2]>bounds[0] and bounds[3]>bounds[1] and bounds[1]<2100
             return visible and any(re.search(r'(^|\W)'+re.escape(candidate)+r'($|\W)',name) is not None for candidate in alternatives)
         matches = [n for n in root.iter('node') if matches_label(n)]
         if matches:
@@ -55,6 +55,10 @@ def tap(label):
             adb('shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
             print('TOUCH', label, flush=True)
             return
+        try:
+            adb('shell', 'input', 'swipe', '500', '1400', '500', '600', '300')
+        except Exception:
+            pass
         time.sleep(1)
     (out/'failed-navigation.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
     (out/'failed-logcat.txt').write_text(adb('logcat','-d'))
@@ -62,6 +66,10 @@ def tap(label):
     print(adb('logcat','-d','-s','CPRED_WEBVIEW:*'), flush=True)
     raise AssertionError(f'Visible control not found: {label}')
 
+try:
+    adb('shell', 'pm', 'clear', package)
+except Exception:
+    pass
 adb('install', '-r', apk)
 # Seed a stale downloaded UI from the previous APK, then require migration to archive it.
 legacy = out/'legacy-manifest.json';legacy.write_text('{"versionName":"4.1.72-hotfix"}')

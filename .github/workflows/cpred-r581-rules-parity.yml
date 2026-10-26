@@ -2,7 +2,7 @@ name: Cyberpunk RED R5.81 rules parity, native combat, netrun and Android build
 on:
   push:
     branches: [audit/cpred-r581-rules-parity]
-    paths: [cyberpunk-red/r581/**, cyberpunk-red/adventure-engine/**, audit/**, .github/workflows/cpred-r581-rules-parity.yml]
+    paths: ['cyberpunk-red/**', 'audit/**', '.github/workflows/cpred-r581-rules-parity.yml']
   workflow_dispatch:
 concurrency:
   group: cpred-r581-${{ github.ref }}
@@ -140,6 +140,7 @@ jobs:
             adb exec-out screencap -p > evidence/android/instrumentation-final.png
             for name in r580-scene-imported r580-dice-moving r580-dice-result r580-gemini-failure; do adb exec-out run-as com.braseiro.cyberpunkred cat files/$name.png > evidence/android/$name.png 2>/dev/null || true; done
             python -c "from pathlib import Path; s=Path('instrumentation.log').read_text(); assert 'OK (5 tests)' in s and 'FAILURES' not in s, s"
+            adb shell pm clear com.braseiro.cyberpunkred || true
             python cyberpunk-red/r579/tests/android_flow.py build-source/android/app/build/outputs/apk/debug/app-debug.apk evidence/android
       - name: Publish diagnostic evidence on failure
         if: failure()
