@@ -1,0 +1,35 @@
+name: Cyberpunk R584 atlas/token zoom source probe
+on:
+  push:
+    branches: [fix/cpred-r584-map-token-zoom-20261026]
+    paths: ['.github/workflows/cpred-r584-map-probe.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect-atlas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact baseline atlas source without modifying assets
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o /tmp/cpred-r580-source.zip https://github.com/bra83/hello-world/releases/download/cyberpunk-red-r580-media-dice-voice-20261026/CYBERPUNK_RED_4.1.80_ANDROID_SOURCE.zip
+          echo '3704ddc488266ef7ce39de0d564db1ef93598076b6dcd60f71230c0865a43778  /tmp/cpred-r580-source.zip' | sha256sum --check
+          python - <<'PY'
+          import zipfile,re
+          z=zipfile.ZipFile('/tmp/cpred-r580-source.zip')
+          matches=[n for n in z.namelist() if n.endswith(('atlas.js','atlas.css','mobile_shell.css','style.css','styles.css'))]
+          print('FOUND FILES',matches)
+          for name in matches:
+              s=z.read(name).decode('utf-8','replace')
+              lines=s.splitlines()
+              terms=r'mapToken|tokenMarker|tokenPos|tokenSize|atlasViewport|atlasTiles|zoom|scale\(|\.token|#map-token|#mapToken'
+              found=[i for i,line in enumerate(lines) if re.search(terms,line,re.I)]
+              print('====',name,'total lines',len(lines),'matches',len(found))
+              for i in found[:50]:
+                  print('LINE',i+1)
+                  for j in range(max(0,i-2),min(len(lines),i+4)):
+                      print(str(j+1)+': '+lines[j][:800])
+          PY
