@@ -154,13 +154,30 @@ jobs:
       - name: Package source and APK
         run: |
           mkdir -p deliverables
-          cp build-source/android/app/build/outputs/apk/debug/app-debug.apk deliverables/BRASEIRO_CYBERPUNK_RED_4.1.82_ASSINADO.apk
+          cp build-source/android/app/build/outputs/apk/debug/app-debug.apk deliverables/BRASEIRO_CYBERPUNK_RED_4.1.83_DEBUG_NAO_ATUALIZA.apk
           rm -f build-source/android/local.properties
           cd build-source
-          zip -qr ../deliverables/CYBERPUNK_RED_4.1.82_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/.kotlin/*'
+          zip -qr ../deliverables/CYBERPUNK_RED_4.1.83_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/.kotlin/*'
           cd ..
           cp navigation.log android-build.log characters.log narrative.log contracts.log choices.log media.log instrumentation.log opening.log opening-ui.log settings-ui.log state-budget.log start-failure.log failure-status.log grounding-ui.log rules-regression.log apksigner.log deliverables/
           cp -r evidence deliverables/
           cd deliverables
-          zip -qr CYBERPUNK_RED_4.1.82_EVIDENCIAS.zip evidence
+          zip -qr CYBERPUNK_RED_4.1.83_EVIDENCIAS.zip evidence
           sha256sum *.apk *.zip > SHA256SUMS.txt
+
+      - name: Publish developer APK (not compatible with previously signed installations)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=cyberpunk-red-r583-debug-not-upgrade-20261026
+          cat > release-notes.txt <<'NOTES'
+          Cyberpunk RED 4.1.83 — TEST BUILD ONLY.
+          This APK is signed using an Android Debug certificate different from the existing app.
+          It CANNOT update 4.1.80/4.1.82 over an existing installation.
+          NEVER uninstall the existing app unless all saved data is securely backed up and restored.
+          Historical signing credentials were exposed publicly; signed upgrade is blocked pending safe migration.
+          CI: 314 Node tests and 6 Android instrumentation tests (API 35).
+          This does NOT establish full sourcebook-rules certification.
+          NOTES
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title 'Cyberpunk RED 4.1.83 — DEBUG, NAO ATUALIZA VERSAO INSTALADA' --notes-file release-notes.txt
+          gh release upload "$TAG" deliverables/BRASEIRO_CYBERPUNK_RED_4.1.83_DEBUG_NAO_ATUALIZA.apk deliverables/SHA256SUMS.txt deliverables/apksigner.log --clobber
