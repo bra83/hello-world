@@ -1,0 +1,41 @@
+name: Cyberpunk 4.1.84 - publish verified Gradle APK cache promptly
+on:
+  push:
+    branches: [fix/cpred-r584-map-token-zoom-20261026]
+    paths: [.github/workflows/cpred-r584-publish-built-apk.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fingerprint tested Android source patches
+        id: fingerprint
+        run: echo "sha=$(cat cyberpunk-red/r581/apply.py cyberpunk-red/r581/native/* cyberpunk-red/r581/androidTest/* cyberpunk-red/r584/apply.py | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: binary
+        with:
+          path: |
+            build-source/android/app/build/outputs/apk/debug/app-debug.apk
+            build-source/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android-build.log
+          key: cpred-r584-apk-${{ steps.fingerprint.outputs.sha }}
+      - name: Verify exact Gradle APK from successful build step
+        run: |
+          test "${{ steps.binary.outputs.cache-hit }}" = 'true'
+          test -s build-source/android/app/build/outputs/apk/debug/app-debug.apk
+          test -s android-build.log
+          grep -q 'BUILD SUCCESSFUL' android-build.log
+          mkdir -p deliverables
+          cp build-source/android/app/build/outputs/apk/debug/app-debug.apk deliverables/BRASEIRO_CYBERPUNK_RED_4.1.84_DEBUG_NAO_ATUALIZA.apk
+          (cd deliverables && sha256sum *.apk > SHA256SUMS.txt)
+      - name: Publish APK from exact previous Gradle build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=cyberpunk-red-r584-debug-not-upgrade-20261026
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target d6522397b432ea6452f8d3da3cd8ab2eb455b703 --prerelease --title 'Cyberpunk RED 4.1.84 - Token maior no Zoom (APK DEBUG)' --notes 'Compilação Android 4.1.84 verificada. Token do atlas ampliado a 84-104px no zoom afastado. Assinatura debug NÃO atualiza instalações 4.1.80/4.1.82. Emulador e testes completos registrados separadamente no Actions do mesmo código; não afirma paridade integral de regras.'
+          gh release upload "$TAG" deliverables/*.apk deliverables/SHA256SUMS.txt --clobber
